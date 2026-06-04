@@ -924,6 +924,162 @@ def write_sql_batches(
     return written
 
 
+# 解析版关键词（用于识别和配对）
+ANSWER_KEYWORDS = ["解析版", "答案版", "解答版", "参考答案", "答案解析"]
+ORIGINAL_KEYWORDS = ["原卷版", "原卷", "试题", "试卷"]
+
+
+def is_answer_file(stem: str) -> bool:
+    """判断文件名是否为解析版/答案版"""
+    s = stem.lower()
+    return any(k in s for k in ANSWER_KEYWORDS)
+
+
+def is_original_file(stem: str) -> bool:
+    """判断文件名是否为原卷版"""
+    s = stem.lower()
+    return any(k in s for k in ORIGINAL_KEYWORDS) and not is_answer_file(stem)
+
+
+def find_paired_files(all_files: List[str]) -> List[Tuple[str, Optional[str]]]:
+    """
+    将文件列表配对为 (原卷版路径, 解析版路径)。
+    配对策略：
+      1. 按父目录分组
+      2. 同目录下，文件名最相似的原卷版/解析版配对
+      3. 未配对的原卷版，解析版路径为 None
+    返回: [(original_path, answer_path_or_None), ...]
+    """
+    from collections import defaultdict
+    import difflib
+
+    # 按父目录分组
+    dir_files: Dict[str, List[str]] = defaultdict(list)
+    for f in all_files:
+        dir_files[str(Path(f).parent)].append(f)
+
+    paired: List[Tuple[str, Optional[str]]] = []
+
+    for dir_path, files in dir_files.items():
+        originals = [f for f in files if is_original_file(Path(f).stem)]
+        answers = [f for f in files if is_answer_file(Path(f).stem)]
+
+        # 简单配对：对每个原卷版，找文件名最相似的解析版
+        used_answers = set()
+        for orig in originals:
+            orig_stem = Path(orig).stem
+            best_match = None
+            best_ratio = 0.0
+            for ans in answers:
+                if ans in used_answers:
+                    continue
+                ans_stem = Path(ans).stem
+                # 去掉"原卷版"/"解析版"等关键词后比较相似度
+                clean_orig = re.sub(r'（原卷版）|（解析版）|原卷版|解析版|答案版|解答版|参考答案|答案解析|\s+', '', orig_stem)
+                clean_ans = re.sub(r'（原卷版）|（解析版）|原卷版|解析版|答案版|解答版|参考答案|答案解析|\s+', '', ans_stem)
+                ratio = difflib.SequenceMatcher(None, clean_orig, clean_ans).ratio()
+                if ratio > best_ratio and ratio > 0.5:  # 相似度阈值
+                    best_ratio = ratio
+                    best_match = ans
+
+            if best_match:
+                used_answers.add(best_match)
+                paired.append((orig, best_match))
+            else:
+                paired.append((orig, None))
+
+        # 未配对的原卷版（兜底：所有非解析版文件）
+        other_files = [f for f in files if not is_answer_file(Path(f).stem) and f not in [p[0] for p in paired]]
+        for f in other_files:
+            # 检查是否已作为原卷版配对
+            if f not in [p[0] for p in paired]:
+                paired.append((f, None))
+
+    return paired
+
+
+def extract_answers_from_text(text: str) -> Dict[str, Dict[str, str]]:
+    """
+    从解析版全文中按题号提取答案和解析。
+    支持格式：
+      【答案】xxx
+      【解析】
+      【分析】xxx
+      【详解】xxx
+      【点睛】xxx
+    返回: {题号字符串: {"answer": "...", "solution": "..."}}
+    """
+    answer_map: Dict[str, Dict[str, str]] = {}
+
+    # 按题号拆分解析版全文
+    splits = split_by_question_number(text)
+    if not splits:
+        # 如果没有题号，尝试整体提取
+        return {}
+
+    for q_num_str, q_text in splits:
+        # 提取答案
+        answer = None
+        m = re.search(r'【答案】\s*([^\n【]+)', q_text)
+        if m:
+            answer = m.group(1).strip()
+        else:
+            m = re.search(r'答案[：:]\s*([^\n]+)', q_text)
+            if m:
+                answer = m.group(1).strip()
+
+        # 提取解析（合并 【分析】+【详解】+【解析】+【点睛】）
+        solution_parts = []
+
+        # 【分析】
+        m = re.search(r'【分析】\s*(.+?)(?=【|$)', q_text, re.DOTALL)
+        if m:
+            solution_parts.append(f"【分析】{m.group(1).strip()}")
+
+        # 【详解】
+        m = re.search(r'【详解】\s*(.+?)(?=【|$)', q_text, re.DOTALL)
+        if m:
+            solution_parts.append(f"【详解】{m.group(1).strip()}")
+
+        # 【解析】（如果上面没有，再单独取）
+        if not solution_parts:
+            m = re.search(r'【解析】\s*(.+?)(?=【|$)', q_text, re.DOTALL)
+            if m:
+                solution_parts.append(f"【解析】{m.group(1).strip()}")
+
+        # 【点睛】
+        m = re.search(r'【点睛】\s*(.+?)(?=【|$)', q_text, re.DOTALL)
+        if m:
+            solution_parts.append(f"【点睛】{m.group(1).strip()}")
+
+        solution = "\n".join(solution_parts) if solution_parts else None
+
+        if answer or solution:
+            answer_map[str(q_num_str)] = {
+                "answer": answer or "",
+                "solution": solution or "",
+            }
+
+    return answer_map
+
+
+def merge_answers_to_questions(
+    questions: List[ExtractedQuestion],
+    answer_map: Dict[str, Dict[str, str]],
+) -> None:
+    """
+    将解析版提取的答案/解析合并到题目列表中（按题号匹配，原地修改）。
+    """
+    for q in questions:
+        q_num = str(q.question_number)
+        if q_num in answer_map:
+            info = answer_map[q_num]
+            if info.get("answer"):
+                q.answer = info["answer"]
+            if info.get("solution"):
+                q.solution = info["solution"]
+
+
 # ----------------------------------------------------------------------
 # 单文件处理 Worker
 # ----------------------------------------------------------------------
@@ -932,6 +1088,7 @@ def process_single_file(
     out_dir: Path,
     max_image_width: int,
     compress_quality: int,
+    answer_file_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     处理单个文件，返回结果字典。
@@ -1008,6 +1165,31 @@ def process_single_file(
         result["images"] = imgs
         result["paper"] = asdict(paper_meta)
         result["paper"]["question_count"] = len(qs)
+
+        # 如果有对应的解析版，提取答案/解析并合并
+        if answer_file_path and qs:
+            try:
+                ans_ext = Path(answer_file_path).suffix.lower()
+                if ans_ext == ".pdf":
+                    ans_doc = fitz.open(answer_file_path)
+                    ans_text = "\n".join(page.get_text("text") for page in ans_doc)
+                    ans_doc.close()
+                elif ans_ext in (".docx", ".doc"):
+                    ans_doc = Document(answer_file_path)
+                    ans_text = "\n".join(p.text for p in ans_doc.paragraphs if p.text.strip())
+                else:
+                    ans_text = ""
+
+                if ans_text:
+                    answer_map = extract_answers_from_text(ans_text)
+                    if answer_map:
+                        merge_answers_to_questions(qs, answer_map)
+                        # 更新 result 中的 questions（因为 qs 被原地修改了）
+                        result["questions"] = [asdict(q) for q in qs]
+                        matched = sum(1 for q in qs if q.answer or q.solution)
+                        logger.info(f"  解析版合并: {matched}/{len(qs)} 题匹配到答案/解析")
+            except Exception as e:
+                logger.warning(f"  解析版处理失败 {answer_file_path}: {e}")
 
     except Exception as e:
         logger.exception(f"处理文件失败: {file_path}")
@@ -1091,13 +1273,18 @@ def main():
         logger.info("没有待处理文件，退出")
         sys.exit(0)
 
-    # 加载断点
+    # 配对原卷版与解析版
+    paired_files = find_paired_files(all_files)
+    paired_count = sum(1 for _, ans in paired_files if ans is not None)
+    logger.info(f"文件配对完成: {len(paired_files)} 份原卷, {paired_count} 份有对应解析版 ({paired_count / len(paired_files) * 100:.1f}%)")
+
+    # 加载断点（以原卷版路径为准）
     checkpoint = load_checkpoint(out_dir)
     processed_set = set(checkpoint.get("processed", []))
-    pending_files = [f for f in all_files if f not in processed_set]
-    logger.info(f"已处理 {len(processed_set)} 个，待处理 {len(pending_files)} 个")
+    pending_pairs = [(orig, ans) for orig, ans in paired_files if orig not in processed_set]
+    logger.info(f"已处理 {len(processed_set)} 个，待处理 {len(pending_pairs)} 个")
 
-    if not pending_files:
+    if not pending_pairs:
         logger.info("所有文件已处理完毕")
         sys.exit(0)
 
@@ -1117,37 +1304,37 @@ def main():
     CHECKPOINT_INTERVAL = 100
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        future_to_file = {
+        future_to_pair = {
             executor.submit(
                 process_single_file,
-                f,
+                orig,
                 out_dir,
                 args.max_image_width,
                 args.compress_quality,
-            ): f
-            for f in pending_files
+                ans,  # 传入解析版路径
+            ): (orig, ans)
+            for orig, ans in pending_pairs
         }
 
-        for future in as_completed(future_to_file):
-            file_path = future_to_file[future]
+        for future in as_completed(future_to_pair):
+            orig_path, ans_path = future_to_pair[future]
             try:
                 res = future.result()
             except Exception as exc:
-                logger.exception(f"Worker 异常: {file_path}")
-                all_failed.append({"file": file_path, "error": str(exc)})
-                processed_set.add(file_path)
+                logger.exception(f"Worker 异常: {orig_path}")
+                all_failed.append({"file": orig_path, "error": str(exc)})
+                processed_set.add(orig_path)
                 processed_since_checkpoint += 1
-                # 记录失败日志到 SQLite
                 db.insert_extract_log({
-                    "file_path": file_path,
-                    "file_name": Path(file_path).name,
+                    "file_path": orig_path,
+                    "file_name": Path(orig_path).name,
                     "status": "failed",
                     "error_msg": str(exc),
                 })
                 continue
 
             if res["success"]:
-                processed_set.add(file_path)
+                processed_set.add(orig_path)
                 processed_since_checkpoint += 1
                 
                 # 写入 SQLite
@@ -1159,8 +1346,8 @@ def main():
                 
                 # 记录成功日志
                 db.insert_extract_log({
-                    "file_path": file_path,
-                    "file_name": Path(file_path).name,
+                    "file_path": orig_path,
+                    "file_name": Path(orig_path).name,
                     "subject": res.get("paper", {}).get("subject", ""),
                     "year": res.get("paper", {}).get("year", 0),
                     "region": res.get("paper", {}).get("region", ""),
@@ -1171,28 +1358,33 @@ def main():
                 })
                 db.commit()
                 
+                # 统计答案/解析覆盖率
+                qs = res.get("questions", [])
+                has_answer = sum(1 for q in qs if q.get("answer"))
+                has_solution = sum(1 for q in qs if q.get("solution"))
                 logger.info(
-                    f"✓ {file_path} | 提取 {len(res['questions'])} 题, "
-                    f"{len(res['images'])} 张图 | 已写入 SQLite"
+                    f"✓ {Path(orig_path).name} | 提取 {len(qs)} 题, "
+                    f"{len(res['images'])} 张图 | "
+                    f"答案 {has_answer}/{len(qs)}, 解析 {has_solution}/{len(qs)} | "
+                    f"已写入 SQLite"
                 )
 
                 # 若题目数异常（如0题或过多），标记人工复核
-                q_count = len(res["questions"])
+                q_count = len(qs)
                 if q_count == 0 or q_count > 50:
                     all_manual.append({
-                        "file": file_path,
+                        "file": orig_path,
                         "reason": f"题目数量异常: {q_count}",
                         "questions": q_count,
                     })
             else:
-                all_failed.append({"file": file_path, "error": res.get("error")})
-                processed_set.add(file_path)
+                all_failed.append({"file": orig_path, "error": res.get("error")})
+                processed_set.add(orig_path)
                 processed_since_checkpoint += 1
-                logger.warning(f"✗ {file_path} | {res.get('error')}")
-                # 记录失败日志
+                logger.warning(f"✗ {Path(orig_path).name} | {res.get('error')}")
                 db.insert_extract_log({
-                    "file_path": file_path,
-                    "file_name": Path(file_path).name,
+                    "file_path": orig_path,
+                    "file_name": Path(orig_path).name,
                     "status": "failed",
                     "error_msg": res.get("error", ""),
                 })
@@ -1200,6 +1392,12 @@ def main():
 
             # 每 100 文件保存断点
             if processed_since_checkpoint >= CHECKPOINT_INTERVAL:
+                checkpoint["processed"] = sorted(processed_set)
+                save_checkpoint(out_dir, checkpoint)
+                save_failed_files(out_dir, all_failed)
+                save_manual_review(out_dir, all_manual)
+                logger.info(f"断点已保存（已处理 {len(processed_set)} 个文件）")
+                processed_since_checkpoint = 0
                 checkpoint["processed"] = sorted(processed_set)
                 save_checkpoint(out_dir, checkpoint)
                 save_failed_files(out_dir, all_failed)
