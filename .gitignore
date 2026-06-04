@@ -1,0 +1,39 @@
+# 原始试卷文件和目录（太大，不提交）
+*.pdf
+*.docx
+*.doc
+B京化学七八九/
+B京市数学七八九/
+B京物理八九/
+北京9上数学试卷/
+北京9上物理/
+北京数学八上/
+北京数学八下/
+
+# 测试输出目录
+test_extract/
+extract_output/
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# macOS
+.DS_Store
+
+# 日志和临时文件
+*.log
+*.tmp
+
+# 本地数据库（可重新生成）
+*.sqlite
+*.sqlite3
+
+# 上传断点文件
+upload_checkpoint.json

@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>mytiku — 项目全景报告</title>
+<style>
+:root {
+  --bg: #faf9f7;
+  --card: #ffffff;
+  --text: #1e293b;
+  --text-light: #64748b;
+  --border: #e2e8f0;
+  --primary: #1e3a5f;
+  --primary-light: #334155;
+  --accent: #c2410c;
+  --accent-bg: #fff7ed;
+  --success: #166534;
+  --success-bg: #f0fdf4;
+  --warning: #a16207;
+  --warning-bg: #fefce8;
+  --radius: 12px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+  --shadow-hover: 0 4px 12px rgba(0,0,0,0.12);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.7;
+  font-size: 15px;
+}
+.container { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+
+/* Header */
+.header {
+  text-align: center;
+  padding: 48px 0 36px;
+  border-bottom: 2px solid var(--primary);
+  margin-bottom: 40px;
+}
+.header h1 {
+  font-size: 2.4em;
+  color: var(--primary);
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 8px;
+}
+.header .subtitle {
+  font-size: 1.1em;
+  color: var(--text-light);
+  font-weight: 400;
+}
+.header .meta {
+  margin-top: 16px;
+  font-size: 0.85em;
+  color: var(--text-light);
+}
+.header .badge {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: 20px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 0.8em;
+  font-weight: 600;
+  margin: 0 4px;
+}
+
+/* Section */
+.section {
+  margin-bottom: 48px;
+}
+.section-title {
+  font-size: 1.4em;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 20px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-title .icon {
+  width: 28px; height: 28px;
+  background: var(--primary);
+  color: white;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9em;
+}
+
+/* Cards Grid */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+.card .label {
+  font-size: 0.8em;
+  color: var(--text-light);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+.card .value {
+  font-size: 2em;
+  font-weight: 700;
+  color: var(--primary);
+  line-height: 1.2;
+}
+.card .value-small {
+  font-size: 1.4em;
+}
+.card .desc {
+  font-size: 0.85em;
+  color: var(--text-light);
+  margin-top: 6px;
+}
+.card.accent { background: var(--accent-bg); }
+.card.accent .value { color: var(--accent); }
+.card.success { background: var(--success-bg); }
+.card.success .value { color: var(--success); }
+.card.warning { background: var(--warning-bg); }
+.card.warning .value { color: var(--warning); }
+
+/* Architecture */
+.arch-box {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 32px;
+  box-shadow: var(--shadow);
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 0.9em;
+  line-height: 1.8;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.arch-box .local { color: var(--accent); font-weight: 600; }
+.arch-box .cloud { color: var(--success); font-weight: 600; }
+.arch-box .arrow { color: var(--text-light); }
+
+/* Table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  font-size: 0.9em;
+}
+th, td { padding: 12px 16px; text-align: left; }
+th {
+  background: var(--primary);
+  color: white;
+  font-weight: 600;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+tr:nth-child(even) { background: #f8fafc; }
+tr:hover { background: #f1f5f9; }
+td.size { text-align: right; color: var(--text-light); font-variant-numeric: tabular-nums; }
+td.lines { text-align: right; color: var(--text-light); font-variant-numeric: tabular-nums; }
+
+/* Charts */
+.chart-container {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+}
+.chart-title {
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 16px;
+}
+.bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.bar-label {
+  width: 80px;
+  font-size: 0.85em;
+  color: var(--text-light);
+  text-align: right;
+  flex-shrink: 0;
+}
+.bar-track {
+  flex: 1;
+  height: 24px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+}
+.bar-fill .bar-value {
+  font-size: 0.75em;
+  font-weight: 600;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+.bar-fill.math { background: #1e3a5f; }
+.bar-fill.physics { background: #475569; }
+.bar-fill.chemistry { background: #94a3b8; }
+.bar-fill.year { background: #c2410c; }
+.bar-fill.exam { background: #166534; }
+.bar-fill.grade { background: #a16207; }
+
+/* Timeline */
+.timeline {
+  position: relative;
+  padding-left: 32px;
+}
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+.timeline-item {
+  position: relative;
+  margin-bottom: 24px;
+  padding: 16px 20px;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.timeline-item::before {
+  content: "";
+  position: absolute;
+  left: -26px;
+  top: 22px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 3px solid var(--bg);
+}
+.timeline-item.done::before { background: var(--success); }
+.timeline-item.pending::before { background: var(--warning); }
+.timeline-item .tl-title {
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 4px;
+}
+.timeline-item .tl-desc {
+  font-size: 0.9em;
+  color: var(--text-light);
+}
+.timeline-item .tl-status {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 0.75em;
+  font-weight: 600;
+  margin-top: 8px;
+}
+.timeline-item.done .tl-status {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.timeline-item.pending .tl-status {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+/* Constraints */
+.constraints {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.constraint-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  border-left: 4px solid var(--primary);
+}
+.constraint-card.danger { border-left-color: var(--accent); }
+.constraint-card.warn { border-left-color: var(--warning); }
+.constraint-card.safe { border-left-color: var(--success); }
+.constraint-card .c-title {
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 8px;
+  font-size: 0.95em;
+}
+.constraint-card .c-desc {
+  font-size: 0.85em;
+  color: var(--text-light);
+  line-height: 1.6;
+}
+.constraint-card .c-metric {
+  font-size: 1.3em;
+  font-weight: 700;
+  color: var(--primary);
+  margin-top: 8px;
+}
+
+/* Data Flow Section */
+.data-flow {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 28px;
+  box-shadow: var(--shadow);
+  margin-bottom: 20px;
+}
+.data-flow h3 {
+  font-size: 1.1em;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 16px;
+}
+.data-flow pre {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 16px;
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 0.85em;
+  line-height: 1.6;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.data-flow .highlight {
+  background: var(--accent-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.data-flow .note {
+  font-size: 0.85em;
+  color: var(--text-light);
+  margin-top: 12px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border-left: 3px solid var(--warning);
+}
+
+/* Efficiency Tips */
+.efficiency-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+.eff-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+.eff-card .eff-title {
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 10px;
+  font-size: 0.95em;
+}
+.eff-card .eff-desc {
+  font-size: 0.85em;
+  color: var(--text-light);
+  line-height: 1.7;
+}
+.eff-card .eff-cmd {
+  background: #f8fafc;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 0.8em;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+/* Footer */
+.footer {
+  text-align: center;
+  padding: 40px 0;
+  color: var(--text-light);
+  font-size: 0.85em;
+  border-top: 1px solid var(--border);
+  margin-top: 40px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .cards-grid { grid-template-columns: 1fr; }
+  .header h1 { font-size: 1.8em; }
+  .arch-box { font-size: 0.75em; padding: 20px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- Header -->
+<div class="header">
+  <h1>📚 mytiku</h1>
+  <p class="subtitle">基于 Cloudflare 免费层的中考数学/物理题库系统 — 项目全景报告</p>
+  <div class="meta">
+    <span class="badge">📅 生成时间: 2026-06-04</span>
+    <span class="badge">📍 工作目录: /Users/aiken/coding/mytiku</span>
+  </div>
+</div>
+
+<!-- Overview Cards -->
+<div class="section">
+  <div class="section-title"><span class="icon">📊</span> 项目概览</div>
+  <div class="cards-grid">
+    <div class="card">
+      <div class="label">代码文件</div>
+      <div class="value">14</div>
+      <div class="desc">Python + TypeScript + SQL + 配置 + SQLite</div>
+    </div>
+    <div class="card accent">
+      <div class="label">总代码行数</div>
+      <div class="value">3,200+</div>
+      <div class="desc">Python 2,000+ 行 / TS 525 行 / SQL 200+ 行</div>
+    </div>
+    <div class="card success">
+      <div class="label">待提取试卷</div>
+      <div class="value">2,942</div>
+      <div class="desc">原卷版（已去重，解析版自动跳过）</div>
+    </div>
+    <div class="card warning">
+      <div class="label">预计题目数</div>
+      <div class="value">~82,000</div>
+      <div class="desc">每道题 5 维度标签，平均 8+ 个标签</div>
+    </div>
+  </div>
+</div>
+
+<!-- Architecture -->
+<div class="section">
+  <div class="section-title"><span class="icon">🏗️</span> 系统架构</div>
+  <div class="arch-box">
+<span class="local">┌─────────────────────────────────────────────────────────┐</span>
+<span class="local">│  本地（一次性运行）                                       │</span>
+<span class="local">│  ├── extract/                                             │</span>
+<span class="local">│  │   ├── extract_all.py     →  PDF/Word 提取 + 图片压缩     │</span>
+<span class="local">│  │   ├── local_db.py       →  SQLite 本地数据库（查询/清洗）│</span>
+<span class="local">│  │   ├── upload_to_cf.py   →  批量上传 SQL + 图片到 CF     │</span>
+<span class="local">│  │   ├── exam_cli.py      →  日常 CLI 客户端              │</span>
+<span class="local">│  │   └── tag_rules.py     →  多维度标签引擎（5维度×80+规则）│</span>
+<span class="local">│  ├── raw_papers/          →  2,942 份原卷版试卷            │</span>
+<span class="local">│  └── extract_output/                                      │</span>
+<span class="local">│      ├── local.sqlite     →  本地数据库（查询/验证/清洗）   │</span>
+<span class="local">│      ├── batch_sql/       →  导出 SQL 文件供上传           │</span>
+<span class="local">│      └── images/          →  压缩后的图片                  │</span>
+<span class="local">└─────────────────────────────────────────────────────────┘</span>
+                              <span class="arrow">↓ 导出 SQL 后上传</span>
+<span class="cloud">┌─────────────────────────────────────────────────────────┐</span>
+<span class="cloud">│  Cloudflare（永久运行）                                   │</span>
+<span class="cloud">│  ├── D1: exam-bank-db    →  82,000+ 题目 + 标签 + 模板   │</span>
+<span class="cloud">│  ├── R2: exam-bank-assets →  图片(&lt;8GB) + 预览 HTML       │</span>
+<span class="cloud">│  ├── KV: 热点缓存         →  热力图/标签树/限流计数器      │</span>
+<span class="cloud">│  └── Workers: exam-bank  →  API 网关（6 个端点）           │</span>
+<span class="cloud">│       ├── POST /api/query      题目筛选                   │</span>
+<span class="cloud">│       ├── POST /api/generate   智能组卷                   │</span>
+<span class="cloud">│       ├── GET  /api/analytics  统计分析                   │</span>
+<span class="cloud">│       ├── GET  /api/html/:id   试卷预览                   │</span>
+<span class="cloud">│       ├── GET  /api/tags       标签树                    │</span>
+<span class="cloud">│       └── POST /api/template   模板管理                   │</span>
+<span class="cloud">└─────────────────────────────────────────────────────────┘</span>
+  </div>
+</div>
+
+<!-- Data Flow & Storage -->
+<div class="section">
+  <div class="section-title"><span class="icon">💾</span> 数据流与存储详解</div>
+  
+  <div class="data-flow">
+    <h3>1. 本地提取后的存储结构（v2 — SQLite 版）</h3>
+    <p>运行 <code>extract_all.py</code> 后，数据先写入 <span class="highlight">local.sqlite</span>，再导出 SQL：</p>
+    <pre>
+extract_output/
+├── <b>local.sqlite</b>               ← 本地数据库（核心！支持查询/验证/清洗）
+│   ├── papers 表               ← 2,942 份试卷元数据
+│   ├── questions 表              ← 82,000+ 道题 + 5 维度标签
+│   ├── tag_stats 表            ← 标签分布统计
+│   └── extract_log 表          ← 提取日志（成功/失败/异常）
+├── <b>checkpoint.json</b>              ← 断点记录（已处理文件列表）
+├── <b>failed_files.json</b>          ← 解析失败的文件列表
+├── <b>manual_review.json</b>         ← 需人工复核的文件
+├── <b>extract_stats.json</b>         ← 标签分布统计报告
+├── <b>batch_sql/</b>
+│   ├── questions_part_001.sql   ← 从 SQLite 导出的 SQL（每批 5,000 条）
+│   └── ...
+└── <b>images/</b>
+    ├── math/
+    └── physics/</pre>
+    <div class="note">
+      <b>关键升级（v2）：</b>数据先写入 SQLite 而非直接生成 SQL 文件。
+      好处：① 可查询验证 ② 可清洗修正标签 ③ 增量更新天然去重 ④ 标签分布统计一目了然。
+      最终用 <code>db.export_to_sql()</code> 导出为同样格式的 SQL 文件供上传。
+    </div>
+  </div>
+  
+  <div class="data-flow">
+    <h3>2. SQL 文件内容格式</h3>
+    <p>每个 <code>questions_part_NNN.sql</code> 包含两类 INSERT：</p>
+    <pre>
+-- 1. 先插入 papers 表（去重，INSERT OR IGNORE）
+INSERT OR IGNORE INTO papers (paper_id, title, subject, region, exam_type, year, 
+  total_score, question_count, metadata) 
+VALUES ('math_2019_北京_期末_xxx', '北京市xx区期末数学', 'math', '北京', '期末', 
+  2019, 100, 28, '{"source": "..."}');
+
+-- 2. 再插入 questions 表（每道题一条）
+INSERT INTO questions (question_id, paper_id, question_number, q_type, position, 
+  score, difficulty, content, options, answer, tags, images, estimated_time) 
+VALUES ('q_math_2019_北京_期末_xxx_1', 'math_2019_北京_期末_xxx', '1', 
+  'choice', 'basic', 3, 1, '题干文本...', 
+  '[{"label":"A","text":"六边形"},...]', NULL, 
+  '["多边形","几何"]', 
+  '["images/math/xxx_q1_fig1.jpg"]', 3);
+  ...
+  （最多 5,000 条）
+COMMIT;</pre>
+    <div class="note">
+      <b>参数化安全：</b>所有字符串值经过 SQL 转义（单引号 → 双单引号），
+      防止 SQL 注入。Workers 端同样使用 <code>.bind()</code> 参数化查询。
+    </div>
+  </div>
+  
+  <div class="data-flow">
+    <h3>3. 上传到 Cloudflare 的方式</h3>
+    <p><b>D1 数据库上传：</b>通过 <code>wrangler d1 execute</code> CLI 命令执行 SQL 文件</p>
+    <pre>
+# 单文件执行（内部自动使用事务）
+wrangler d1 execute exam-bank-db --file=questions_part_001.sql --yes
+
+# 特点：
+# - 每文件一个事务，原子性保证
+# - 超时 5 分钟，适合大批量写入
+# - 免费层限额：50,000 次写入/天（≈ 50 个 5,000 条批次）</pre>
+    
+    <p><b>R2 图片上传：</b>两种模式可选</p>
+    <pre>
+# 模式 A：boto3（推荐，支持并发）
+python upload_to_cf.py --images-dir ./extract_output/images/ 
+  --r2-endpoint https://&lt;account&gt;.r2.cloudflarestorage.com
+  --r2-access-key &lt;key&gt; --r2-secret-key &lt;secret&gt;
+
+# 模式 B：wrangler（无需 boto3，但单线程）
+python upload_to_cf.py --images-dir ./extract_output/images/ 
+  --use-wrangler-r2 --r2-bucket exam-bank-assets</pre>
+    <div class="note">
+      <b>上传前检查：</b>脚本会自动过滤 &gt;50KB 的图片（跳过并记录日志），
+      确保 R2 存储不超限。已上传的图片通过 <code>upload_checkpoint.json</code> 去重。
+    </div>
+  </div>
+</div>
+
+<!-- Multi-dimensional Tag System -->
+<div class="section">
+  <div class="section-title"><span class="icon">🏷️</span> 多维度标签体系（v2 核心升级）</div>
+  <div style="background:var(--card); border-radius:var(--radius); padding:24px; box-shadow:var(--shadow); margin-bottom:20px;">
+    <p style="margin-bottom:16px;">每道题从 <b>5 个维度</b>自动打标签，平均 <b>8+ 个标签</b>，支持精准组卷：</p>
+    <table style="margin-bottom:0;">
+      <thead>
+        <tr><th>维度</th><th>标签示例</th><th>组卷用途</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><b>知识点</b></td><td>圆、二次函数、全等三角形、浮力、欧姆定律</td><td>按章节/概念筛选题目</td></tr>
+        <tr><td><b>能力维度</b></td><td>计算能力、逻辑推理、空间想象、阅读理解、实验设计</td><td>按考查能力筛选题目</td></tr>
+        <tr><td><b>题型特征</b></td><td>含图表、多步骤、实际情境、最值问题、证明题、开放性</td><td>按题目形式筛选题目</td></tr>
+        <tr><td><b>解题方法</b></td><td>数形结合、分类讨论、构造法、反证法、换元法</td><td>按方法训练筛选题目</td></tr>
+        <tr><td><b>考试定位</b></td><td>基础题、中档题、综合题、压轴题、创新题</td><td>按难度/功能筛选题目</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note" style="margin-top:0;">
+    <b>组卷示例：</b>"生成一份 100 分数学卷，包含：基础题 30 分（计算能力）+ 中档题 40 分（圆+逻辑推理）+ 压轴题 30 分（二次函数+数形结合+最值）"
+  </div>
+</div>
+
+<!-- Efficiency Optimization -->
+<div class="section">
+  <div class="section-title"><span class="icon">⚡</span> 上传效率优化方案</div>
+  <div class="efficiency-grid">
+    <div class="eff-card">
+      <div class="eff-title">1. SQL 批量事务（已内置）</div>
+      <div class="eff-desc">
+        每 5,000 条 INSERT 包装为一个事务，而非逐条提交。
+        事务写入 ≈ 1 次计数，82,000 题仅需 17 个事务，远低于 D1 免费层 50 万/天限额。
+      </div>
+      <div class="eff-cmd">--batch-size 5000  # 默认已是最优值</div>
+    </div>
+    
+    <div class="eff-card">
+      <div class="eff-title">2. 图片并发上传（boto3 模式）</div>
+      <div class="eff-desc">
+        boto3 底层使用 HTTP 连接池，可配置 max_pool_connections 实现并发上传。
+        相比 wrangler 单线程，速度提升 5-10 倍。预计 3,000 张图片 10-20 分钟完成。
+      </div>
+      <div class="eff-cmd">Config(max_pool_connections=20)</div>
+    </div>
+    
+    <div class="eff-card">
+      <div class="eff-title">3. 断点续传（双重保障）</div>
+      <div class="eff-desc">
+        extract_all.py 每 100 文件保存 checkpoint.json，upload_to_cf.py 每成功一个文件
+        立即保存 upload_checkpoint.json。中断后重新运行自动跳过已完成部分，无需从头开始。
+      </div>
+      <div class="eff-cmd">checkpoint.json + upload_checkpoint.json</div>
+    </div>
+    
+    <div class="eff-card">
+      <div class="eff-title">4. 图片预压缩（提取阶段完成）</div>
+      <div class="eff-desc">
+        提取时即压缩：最大宽度 1200px → JPEG 75%质量 → 二次压缩 800px/60%。
+        单张 &lt;50KB，总存储 &lt;400MB。避免上传后再处理，节省带宽和时间。
+      </div>
+      <div class="eff-cmd">--compress-quality 75 --max-image-width 1200</div>
+    </div>
+    
+    <div class="eff-card">
+      <div class="eff-title">5. 分天执行策略（规避限额）</div>
+      <div class="eff-desc">
+        D1 免费层 50,000 写入/天 ≈ 50 个 5,000 条批次。建议每天执行 10-20 个 SQL 文件，
+        4-5 天完成全部上传。配合 cron 或手动分批，避免单日超限。
+      </div>
+      <div class="eff-cmd">每天执行: python upload_to_cf.py --sql-dir ...</div>
+    </div>
+    
+    <div class="eff-card">
+      <div class="eff-title">6. 解析版自动跳过（减少无效处理）</div>
+      <div class="eff-desc">
+        提取脚本自动识别文件名中的"解析版""答案版"等关键词并跳过。
+        2,942 份原卷版 vs 2,892 份解析版，节省近 50% 处理时间。
+      </div>
+      <div class="eff-cmd">自动过滤: 解析版/答案版/解答版/参考答案</div>
+    </div>
+    
+    <div class="eff-card">
+      <div class="eff-title">7. 多进程提取（CPU 并行）</div>
+      <div class="eff-desc">
+        extract_all.py 支持多进程并发处理 PDF/Word 文件。默认 4 个 worker，
+        可根据 CPU 核心数调整。2,942 份试卷预计 1-3 小时完成提取。
+      </div>
+      <div class="eff-cmd">--max-workers 4  # 建议 = CPU 核心数</div>
+    </div>
+    
+    <div class="eff-card">
+      <div class="eff-title">8. 本地缓存避免重复提取</div>
+      <div class="eff-desc">
+        checkpoint.json 记录已处理文件的绝对路径。再次运行时自动跳过，
+        适合增量更新（如新增试卷时只处理新文件）。
+      </div>
+      <div class="eff-cmd">自动跳过 completed 列表中的文件</div>
+    </div>
+  </div>
+</div>
+
+<!-- File Inventory -->
+<div class="section">
+  <div class="section-title"><span class="icon">📁</span> 文件清单</div>
+  <table>
+    <thead>
+      <tr><th>文件路径</th><th>类型</th><th>大小</th><th>代码行</th><th>功能说明</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>extract/extract_all.py</code></td><td>Python</td><td class="size">35.9 KB</td><td class="lines">1,058</td><td>核心提取器：PDF/Word 提取、题号拆分、图片压缩、自动标签、SQL 生成</td></tr>
+      <tr><td><code>extract/upload_to_cf.py</code></td><td>Python</td><td class="size">14.2 KB</td><td class="lines">422</td><td>Cloudflare 上传：D1 SQL 分批执行、R2 图片上传、断点续传</td></tr>
+      <tr><td><code>extract/exam_cli.py</code></td><td>Python</td><td class="size">7.4 KB</td><td class="lines">259</td><td>本地 CLI 客户端：query/generate/preview/config 四命令</td></tr>
+      <tr><td><code>extract/local_db.py</code></td><td>Python</td><td class="size">21.3 KB</td><td class="lines">~400</td><td>SQLite 本地数据库：写入/查询/统计/清洗/导出 SQL</td></tr>
+      <tr><td><code>extract/tag_rules.py</code></td><td>Python</td><td class="size">18.3 KB</td><td class="lines">~300</td><td>多维度标签引擎：5 维度 × 80+ 条正则规则</td></tr>
+      <tr><td><code>src/index.ts</code></td><td>TypeScript</td><td class="size">9.9 KB</td><td class="lines">267</td><td>Workers 主入口：Bearer 鉴权 + 限流 + 6 个 API 端点（&lt;400 行）</td></tr>
+      <tr><td><code>src/db.ts</code></td><td>TypeScript</td><td class="size">5.4 KB</td><td class="lines">145</td><td>D1 查询辅助：动态 SQL 构建、字段精简、标签树查询</td></tr>
+      <tr><td><code>src/html.ts</code></td><td>TypeScript</td><td class="size">4.6 KB</td><td class="lines">113</td><td>A4 试卷 HTML 生成器：KaTeX 公式 + 打印样式</td></tr>
+      <tr><td><code>schema.sql</code></td><td>SQL</td><td class="size">2.0 KB</td><td class="lines">78</td><td>D1 建表：papers/questions/tags/templates/generated + FTS5</td></tr>
+      <tr><td><code>seed_tags.sql</code></td><td>SQL</td><td class="size">3.5 KB</td><td class="lines">43</td><td>标签体系初始化：数学 17 个标签 + 物理 21 个标签</td></tr>
+      <tr><td><code>wrangler.toml</code></td><td>配置</td><td class="size">0.5 KB</td><td class="lines">19</td><td>Workers 配置：D1/R2/KV 绑定（需填入真实 ID）</td></tr>
+      <tr><td><code>package.json</code></td><td>配置</td><td class="size">0.3 KB</td><td class="lines">16</td><td>npm 依赖：wrangler + TypeScript + workers-types</td></tr>
+      <tr><td><code>tsconfig.json</code></td><td>配置</td><td class="size">0.3 KB</td><td class="lines">13</td><td>TypeScript 编译配置：ES2022 + bundler 模式</td></tr>
+      <tr><td><code>README.md</code></td><td>文档</td><td class="size">17.4 KB</td><td class="lines">597</td><td>完整部署文档：步骤指南 + API 文档 + 故障排查</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Data Assets -->
+<div class="section">
+  <div class="section-title"><span class="icon">📈</span> 数据资产分析</div>
+  
+  <div class="chart-container">
+    <div class="chart-title">按科目分布（2,942 份原卷版）</div>
+    <div class="bar-chart">
+      <div class="bar-row"><div class="bar-label">数学</div><div class="bar-track"><div class="bar-fill math" style="width:100%"><span class="bar-value">1,724</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">物理</div><div class="bar-track"><div class="bar-fill physics" style="width:50%"><span class="bar-value">856</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">化学</div><div class="bar-track"><div class="bar-fill chemistry" style="width:21%"><span class="bar-value">362</span></div></div></div>
+    </div>
+  </div>
+  
+  <div class="chart-container">
+    <div class="chart-title">按年级分布</div>
+    <div class="bar-chart">
+      <div class="bar-row"><div class="bar-label">九年级</div><div class="bar-track"><div class="bar-fill grade" style="width:100%"><span class="bar-value">1,186</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">八年级</div><div class="bar-track"><div class="bar-fill grade" style="width:57%"><span class="bar-value">680</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">七年级</div><div class="bar-track"><div class="bar-fill grade" style="width:63%"><span class="bar-value">752</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">未知</div><div class="bar-track"><div class="bar-fill grade" style="width:27%"><span class="bar-value">324</span></div></div></div>
+    </div>
+  </div>
+  
+  <div class="chart-container">
+    <div class="chart-title">按年份分布</div>
+    <div class="bar-chart">
+      <div class="bar-row"><div class="bar-label">2023</div><div class="bar-track"><div class="bar-fill year" style="width:100%"><span class="bar-value">818</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">2022</div><div class="bar-track"><div class="bar-fill year" style="width:99%"><span class="bar-value">808</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">2024</div><div class="bar-track"><div class="bar-fill year" style="width:39%"><span class="bar-value">322</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">2021</div><div class="bar-track"><div class="bar-fill year" style="width:56%"><span class="bar-value">456</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">2020</div><div class="bar-track"><div class="bar-fill year" style="width:29%"><span class="bar-value">234</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">2019</div><div class="bar-track"><div class="bar-fill year" style="width:23%"><span class="bar-value">192</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">2018</div><div class="bar-track"><div class="bar-fill year" style="width:0%"><span class="bar-value">2</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">未知</div><div class="bar-track"><div class="bar-fill year" style="width:13%"><span class="bar-value">110</span></div></div></div>
+    </div>
+  </div>
+  
+  <div class="chart-container">
+    <div class="chart-title">按考试类型分布</div>
+    <div class="bar-chart">
+      <div class="bar-row"><div class="bar-label">期末</div><div class="bar-track"><div class="bar-fill exam" style="width:100%"><span class="bar-value">1,134</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">期中</div><div class="bar-track"><div class="bar-fill exam" style="width:81%"><span class="bar-value">922</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">月考</div><div class="bar-track"><div class="bar-fill exam" style="width:37%"><span class="bar-value">414</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">中考模拟</div><div class="bar-track"><div class="bar-fill exam" style="width:23%"><span class="bar-value">262</span></div></div></div>
+      <div class="bar-row"><div class="bar-label">其他</div><div class="bar-track"><div class="bar-fill exam" style="width:19%"><span class="bar-value">210</span></div></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Deployment Roadmap -->
+<div class="section">
+  <div class="section-title"><span class="icon">🗺️</span> 部署路线图</div>
+  <div class="timeline">
+    <div class="timeline-item done">
+      <div class="tl-title">Phase 1: 代码生成与修复</div>
+      <div class="tl-desc">13 个文件全部生成完毕，正则表达式修复，SQL 字段与 schema 对齐，提取脚本测试通过（28 题/卷，0 异常）</div>
+      <span class="tl-status">✅ 已完成</span>
+    </div>
+    <div class="timeline-item done">
+      <div class="tl-title">Phase 2: 依赖安装</div>
+      <div class="tl-desc">Python 依赖全部就绪（PyMuPDF 1.26.5, Pillow 11.3.0, python-docx, requests, boto3）。Node.js 依赖待安装。</div>
+      <span class="tl-status">✅ 已完成（Python）/ ⏳ 待完成（Node）</span>
+    </div>
+    <div class="timeline-item pending">
+      <div class="tl-title">Phase 3: Cloudflare 资源创建</div>
+      <div class="tl-desc">创建 D1 数据库、R2 Bucket、KV 命名空间，获取 database_id 和 kv_id 填入 wrangler.toml，设置 API_KEY</div>
+      <span class="tl-status">⏳ 待执行（需 Cloudflare 账号）</span>
+    </div>
+    <div class="timeline-item pending">
+      <div class="tl-title">Phase 4: 数据库初始化</div>
+      <div class="tl-desc">执行 schema.sql 建表，执行 seed_tags.sql 导入标签体系</div>
+      <span class="tl-status">⏳ 待执行</span>
+    </div>
+    <div class="timeline-item pending">
+      <div class="tl-title">Phase 5: Workers 部署</div>
+      <div class="tl-desc">npm install + wrangler deploy，验证 6 个 API 端点正常工作</div>
+      <span class="tl-status">⏳ 待执行</span>
+    </div>
+    <div class="timeline-item done">
+      <div class="tl-title">Phase 6: 批量提取 + SQLite 本地存储（本地运行 1-3 小时）</div>
+      <div class="tl-desc">处理 2,942 份原卷版试卷，先写入 local.sqlite（支持查询/验证/清洗），再导出 SQL。每 100 文件自动保存 checkpoint</div>
+      <span class="tl-status">✅ 架构已完成 / ⏳ 待执行全量提取</span>
+    </div>
+    <div class="timeline-item pending">
+      <div class="tl-title">Phase 7: 数据上传（分多天执行）</div>
+      <div class="tl-desc">分批上传 SQL 到 D1（每批 5,000 条，每天约 10 批），上传图片到 R2。D1 免费写入限额 50 万/天，完全够用。</div>
+      <span class="tl-status">⏳ 待执行</span>
+    </div>
+    <div class="timeline-item pending">
+      <div class="tl-title">Phase 8: CLI 配置与验收</div>
+      <div class="tl-desc">配置 exam_cli.py，测试 query/generate/preview 命令，验证 A4 试卷打印效果</div>
+      <span class="tl-status">⏳ 待执行</span>
+    </div>
+  </div>
+</div>
+
+<!-- Constraints -->
+<div class="section">
+  <div class="section-title"><span class="icon">⚠️</span> 关键约束与资源限额</div>
+  <div class="constraints">
+    <div class="constraint-card safe">
+      <div class="c-title">D1 写入限额</div>
+      <div class="c-desc">Cloudflare 免费层 D1 每天最多 50 万次写入。预计 82,000 条 INSERT，约等于 17 批事务，一天即可完成。</div>
+      <div class="c-metric">✅ 充足</div>
+    </div>
+    <div class="constraint-card safe">
+      <div class="c-title">R2 存储限额</div>
+      <div class="c-desc">免费层提供 10GB 存储。图片已压缩（单张 &lt;50KB，最大宽度 1200px），预计总存储 200-400MB。</div>
+      <div class="c-metric">✅ 充足</div>
+    </div>
+    <div class="constraint-card safe">
+      <div class="c-title">Workers CPU 限制</div>
+      <div class="c-desc">免费层 50ms CPU 时间。代码已极简（index.ts 267 行），所有查询参数化，无复杂计算，预计 &lt;20ms。</div>
+      <div class="c-metric">✅ 充足</div>
+    </div>
+    <div class="constraint-card warn">
+      <div class="c-title">KV 读写限额</div>
+      <div class="c-desc">免费层每天 100,000 次读取 + 1,000 次写入 + 1,000 次删除。限流计数器每 10 分钟写一次，缓存每天写一次，完全够用。</div>
+      <div class="c-metric">⚠️ 注意频率</div>
+    </div>
+    <div class="constraint-card danger">
+      <div class="c-title">图片质量风险</div>
+      <div class="c-desc">Word 中的 WMF/EMF 矢量图无法被 Pillow 处理（已跳过）。部分题目图片可能缺失，需人工复核或从 PDF 源重新提取。</div>
+      <div class="c-metric">⚠️ 需关注</div>
+    </div>
+    <div class="constraint-card danger">
+      <div class="c-title">题号拆分准确性</div>
+      <div class="c-desc">自动题号拆分基于正则，对于非标准格式（如没有题号、题号混乱）会失败。已设置 manual_review.json 记录，需人工复核。</div>
+      <div class="c-metric">⚠️ 需复核</div>
+    </div>
+  </div>
+</div>
+
+<!-- Tech Stack -->
+<div class="section">
+  <div class="section-title"><span class="icon">🛠️</span> 技术栈</div>
+  <div class="cards-grid">
+    <div class="card">
+      <div class="label">本地提取</div>
+      <div class="value value-small">Python 3.9+ + SQLite</div>
+      <div class="desc">PyMuPDF · python-docx · Pillow · requests · boto3 · sqlite3</div>
+    </div>
+    <div class="card">
+      <div class="label">后端 API</div>
+      <div class="value value-small">Cloudflare Workers</div>
+      <div class="desc">TypeScript · D1 · R2 · KV · wrangler CLI</div>
+    </div>
+    <div class="card">
+      <div class="label">数据库</div>
+      <div class="value value-small">SQLite (D1)</div>
+      <div class="desc">FTS5 全文搜索 · 参数化查询 · 事务批量写入</div>
+    </div>
+    <div class="card">
+      <div class="label">前端预览</div>
+      <div class="value value-small">纯 HTML + CSS</div>
+      <div class="desc">KaTeX 公式渲染 · A4 打印样式 · 响应式布局</div>
+    </div>
+  </div>
+</div>
+
+<!-- Next Actions -->
+<div class="section">
+  <div class="section-title"><span class="icon">🎯</span> 下一步行动清单</div>
+  <div style="background:var(--card); border-radius:var(--radius); padding:24px; box-shadow:var(--shadow);">
+    <ol style="padding-left:20px; line-height:2;">
+      <li><strong>注册/登录 Cloudflare</strong> → 获取 Account ID，安装 wrangler CLI：<code>npx wrangler login</code></li>
+      <li><strong>创建 Cloudflare 资源</strong> → D1 数据库、R2 Bucket、KV 命名空间，记录 ID 填入 wrangler.toml</li>
+      <li><strong>设置 API Key</strong> → <code>openssl rand -hex 32</code> 生成密钥，<code>npx wrangler secret put API_KEY</code></li>
+      <li><strong>初始化数据库</strong> → 执行 schema.sql 和 seed_tags.sql</li>
+      <li><strong>部署 Workers</strong> → <code>npm install && npx wrangler deploy</code></li>
+      <li><strong>批量提取试卷到 SQLite</strong> → <code>python3 extract/extract_all.py --input . --output ./extract_output/</code>（耗时 1-3 小时，生成 local.sqlite）</li>
+      <li><strong>本地验证标签质量</strong> → 用 SQLite 查询检查无标签题目比例，必要时清洗修正</li>
+      <li><strong>导出 SQL 并上传</strong> → <code>python3 extract/upload_to_cf.py --sql-dir ./extract_output/batch_sql/ --images-dir ./extract_output/images/</code></li>
+      <li><strong>配置 CLI</strong> → <code>python3 extract/exam_cli.py config</code>，测试 query/generate/preview</li>
+    </ol>
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <p>mytiku 项目全景报告 · 由 AI 自动生成</p>
+  <p style="margin-top:4px; font-size:0.8em;">报告路径: <code>/Users/aiken/coding/mytiku/project-report.html</code></p>
+</div>
+
+</div>
+</body>
+</html>

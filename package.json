@@ -1,0 +1,16 @@
+{
+  "name": "exam-bank",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240604.0",
+    "typescript": "^5.4.5",
+    "wrangler": "^3.60.0"
+  }
+}

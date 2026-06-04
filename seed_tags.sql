@@ -1,0 +1,120 @@
+-- 数学 — 知识点标签
+INSERT OR IGNORE INTO tags (tag_id, tag_name, subject, tag_level, parent_id, tag_path) VALUES
+('math', '数学', 'math', 1, NULL, 'math'),
+('math_algebra', '代数', 'math', 2, 'math', 'math/algebra'),
+('math_number', '数与式', 'math', 3, 'math_algebra', 'math/algebra/number'),
+('math_equation', '方程不等式', 'math', 3, 'math_algebra', 'math/algebra/equation'),
+('math_function', '函数', 'math', 2, 'math', 'math/function'),
+('math_linear', '一次函数', 'math', 3, 'math_function', 'math/function/linear'),
+('math_inverse', '反比例函数', 'math', 3, 'math_function', 'math/function/inverse'),
+('math_quadratic', '二次函数', 'math', 3, 'math_function', 'math/function/quadratic'),
+('math_geometry', '几何', 'math', 2, 'math', 'math/geometry'),
+('math_triangle', '三角形', 'math', 3, 'math_geometry', 'math/geometry/triangle'),
+('math_quadrilateral', '四边形', 'math', 3, 'math_geometry', 'math/geometry/quadrilateral'),
+('math_circle', '圆', 'math', 3, 'math_geometry', 'math/geometry/circle'),
+('math_similar', '相似', 'math', 3, 'math_geometry', 'math/geometry/similar'),
+('math_statistics', '统计概率', 'math', 2, 'math', 'math/statistics'),
+('math_comprehensive', '综合', 'math', 2, 'math', 'math/comprehensive'),
+('math_existence', '存在性最值', 'math', 3, 'math_comprehensive', 'math/comprehensive/existence'),
+('math_newdef', '新定义', 'math', 3, 'math_comprehensive', 'math/comprehensive/newdef'),
+('math_transform', '图形变换', 'math', 3, 'math_geometry', 'math/geometry/transform'),
+('math_solid', '立体几何', 'math', 3, 'math_geometry', 'math/geometry/solid');
+
+-- 物理 — 知识点标签
+INSERT OR IGNORE INTO tags (tag_id, tag_name, subject, tag_level, parent_id, tag_path) VALUES
+('physics', '物理', 'physics', 1, NULL, 'physics'),
+('physics_mechanics', '力学', 'physics', 2, 'physics', 'physics/mechanics'),
+('physics_buoyancy', '浮力', 'physics', 3, 'physics_mechanics', 'physics/mechanics/buoyancy'),
+('physics_friction', '摩擦力', 'physics', 3, 'physics_mechanics', 'physics/mechanics/friction'),
+('physics_pressure', '压强', 'physics', 3, 'physics_mechanics', 'physics/mechanics/pressure'),
+('physics_lever', '杠杆', 'physics', 3, 'physics_mechanics', 'physics/mechanics/lever'),
+('physics_efficiency', '机械效率', 'physics', 3, 'physics_mechanics', 'physics/mechanics/efficiency'),
+('physics_density', '密度测量', 'physics', 3, 'physics_mechanics', 'physics/mechanics/density'),
+('physics_force', '力的概念', 'physics', 3, 'physics_mechanics', 'physics/mechanics/force'),
+('physics_newton', '牛顿定律', 'physics', 3, 'physics_mechanics', 'physics/mechanics/newton'),
+('physics_work', '功和功率', 'physics', 3, 'physics_mechanics', 'physics/mechanics/work'),
+('physics_electricity', '电学', 'physics', 2, 'physics', 'physics/electricity'),
+('physics_ohms', '欧姆定律', 'physics', 3, 'physics_electricity', 'physics/electricity/ohms'),
+('physics_power', '电功率', 'physics', 3, 'physics_electricity', 'physics/electricity/power'),
+('physics_circuit', '电路分析', 'physics', 3, 'physics_electricity', 'physics/electricity/circuit'),
+('physics_resistance', '电阻', 'physics', 3, 'physics_electricity', 'physics/electricity/resistance'),
+('physics_heat_elec', '电热', 'physics', 3, 'physics_electricity', 'physics/electricity/heat'),
+('physics_home', '家庭电路', 'physics', 3, 'physics_electricity', 'physics/electricity/home'),
+('physics_electromag', '电磁', 'physics', 3, 'physics_electricity', 'physics/electricity/electromag'),
+('physics_optics', '光学', 'physics', 2, 'physics', 'physics/optics'),
+('physics_lens', '凸透镜成像', 'physics', 3, 'physics_optics', 'physics/optics/lens'),
+('physics_reflection', '光的反射', 'physics', 3, 'physics_optics', 'physics/optics/reflection'),
+('physics_refraction', '光的折射', 'physics', 3, 'physics_optics', 'physics/optics/refraction'),
+('physics_thermal', '热学', 'physics', 2, 'physics', 'physics/thermal'),
+('physics_phase', '物态变化', 'physics', 3, 'physics_thermal', 'physics/thermal/phase'),
+('physics_specific', '比热容', 'physics', 3, 'physics_thermal', 'physics/thermal/specific'),
+('physics_temp', '温度', 'physics', 3, 'physics_thermal', 'physics/thermal/temp'),
+('physics_engine', '内能与热机', 'physics', 3, 'physics_thermal', 'physics/thermal/engine'),
+('physics_sound', '声学', 'physics', 3, 'physics', 'physics/sound'),
+('physics_kinematics', '运动学', 'physics', 3, 'physics', 'physics/kinematics'),
+('physics_experiment', '实验探究', 'physics', 2, 'physics', 'physics/experiment'),
+('physics_control', '控制变量', 'physics', 3, 'physics_experiment', 'physics/experiment/control'),
+('physics_design', '实验设计', 'physics', 3, 'physics_experiment', 'physics/experiment/design'),
+('physics_measurement', '测量型实验', 'physics', 3, 'physics_experiment', 'physics/experiment/measurement'),
+('physics_inquiry', '探究实验', 'physics', 3, 'physics_experiment', 'physics/experiment/inquiry'),
+('physics_reading', '科普阅读', 'physics', 2, 'physics', 'physics/reading');
+
+-- 能力维度标签（跨学科）
+INSERT OR IGNORE INTO tags (tag_id, tag_name, subject, tag_level, parent_id, tag_path) VALUES
+('ability', '能力维度', NULL, 1, NULL, 'ability'),
+('ability_calc', '计算能力', NULL, 2, 'ability', 'ability/calc'),
+('ability_logic', '逻辑推理', NULL, 2, 'ability', 'ability/logic'),
+('ability_space', '空间想象', NULL, 2, 'ability', 'ability/space'),
+('ability_read', '阅读理解', NULL, 2, 'ability', 'ability/read'),
+('ability_exp', '实验设计', NULL, 2, 'ability', 'ability/exp'),
+('ability_data', '数据分析', NULL, 2, 'ability', 'ability/data'),
+('ability_model', '建模能力', NULL, 2, 'ability', 'ability/model'),
+('ability_induct', '归纳抽象', NULL, 2, 'ability', 'ability/induct'),
+('ability_classify', '分类讨论', NULL, 2, 'ability', 'ability/classify');
+
+-- 题型特征标签（跨学科）
+INSERT OR IGNORE INTO tags (tag_id, tag_name, subject, tag_level, parent_id, tag_path) VALUES
+('feature', '题型特征', NULL, 1, NULL, 'feature'),
+('feature_chart', '含图表', NULL, 2, 'feature', 'feature/chart'),
+('feature_multi', '多步骤', NULL, 2, 'feature', 'feature/multi'),
+('feature_real', '实际情境', NULL, 2, 'feature', 'feature/real'),
+('feature_extreme', '最值问题', NULL, 2, 'feature', 'feature/extreme'),
+('feature_exist', '存在性', NULL, 2, 'feature', 'feature/exist'),
+('feature_proof', '证明题', NULL, 2, 'feature', 'feature/proof'),
+('feature_open', '开放性', NULL, 2, 'feature', 'feature/open'),
+('feature_choice', '单选题', NULL, 2, 'feature', 'feature/choice'),
+('feature_fill', '填空题', NULL, 2, 'feature', 'feature/fill'),
+('feature_answer', '解答题', NULL, 2, 'feature', 'feature/answer'),
+('feature_compre', '综合题', NULL, 2, 'feature', 'feature/compre'),
+('feature_newdef', '新定义题', NULL, 2, 'feature', 'feature/newdef'),
+('feature_material', '材料阅读题', NULL, 2, 'feature', 'feature/material'),
+('feature_operate', '操作题', NULL, 2, 'feature', 'feature/operate');
+
+-- 解题方法标签（跨学科）
+INSERT OR IGNORE INTO tags (tag_id, tag_name, subject, tag_level, parent_id, tag_path) VALUES
+('method', '解题方法', NULL, 1, NULL, 'method'),
+('method_graph', '数形结合', NULL, 2, 'method', 'method/graph'),
+('method_classify', '分类讨论', NULL, 2, 'method', 'method/classify'),
+('method_construct', '构造法', NULL, 2, 'method', 'method/construct'),
+('method_contra', '反证法', NULL, 2, 'method', 'method/contra'),
+('method_subst', '换元法', NULL, 2, 'method', 'method/subst'),
+('method_complete', '配方法', NULL, 2, 'method', 'method/complete'),
+('method_undet', '待定系数法', NULL, 2, 'method', 'method/undet'),
+('method_whole', '整体代入', NULL, 2, 'method', 'method/whole'),
+('method_equation', '方程思想', NULL, 2, 'method', 'method/equation'),
+('method_function', '函数思想', NULL, 2, 'method', 'method/function'),
+('method_transform', '转化化归', NULL, 2, 'method', 'method/transform'),
+('method_special', '特殊值法', NULL, 2, 'method', 'method/special'),
+('method_elim', '排除法', NULL, 2, 'method', 'method/elim'),
+('method_induct', '归纳法', NULL, 2, 'method', 'method/induct'),
+('method_symmetry', '对称法', NULL, 2, 'method', 'method/symmetry'),
+('method_area', '面积法', NULL, 2, 'method', 'method/area');
+
+-- 考试定位标签（跨学科）
+INSERT OR IGNORE INTO tags (tag_id, tag_name, subject, tag_level, parent_id, tag_path) VALUES
+('position', '考试定位', NULL, 1, NULL, 'position'),
+('position_basic', '基础题', NULL, 2, 'position', 'position/basic'),
+('position_medium', '中档题', NULL, 2, 'position', 'position/medium'),
+('position_compre', '综合题', NULL, 2, 'position', 'position/compre'),
+('position_advanced', '压轴题', NULL, 2, 'position', 'position/advanced'),
+('position_innov', '创新题', NULL, 2, 'position', 'position/innov');

@@ -1,0 +1,19 @@
+name = "exam-bank"
+main = "src/index.ts"
+compatibility_date = "2026-06-04"
+
+# D1 数据库（创建后填入 database_id）
+[[d1_databases]]
+binding = "DB"
+database_name = "exam-bank-db"
+database_id = "PLACEHOLDER"  # 运行 wrangler d1 create exam-bank-db 后替换
+
+# R2 存储桶
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "exam-bank-assets"
+
+# KV 命名空间
+[[kv_namespaces]]
+binding = "KV"
+id = "PLACEHOLDER"  # 运行 wrangler kv:namespace create KV 后替换
