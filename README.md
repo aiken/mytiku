@@ -263,9 +263,25 @@ python extract/upload_to_cf.py \
 ### CLI 查询题目
 
 ```bash
+# 按通用标签查询
 python extract/exam_cli.py query \
   --subject math \
   --tags 圆 \
+  --limit 5
+
+# 按多维度标签查询（知识点 + 能力 + 定位）
+python extract/exam_cli.py query \
+  --subject math \
+  --knowledge-tags 圆 几何 \
+  --ability-tags 逻辑推理 \
+  --feature-tags 含图表 \
+  --position-tag 综合题 \
+  --limit 5
+
+# 按解题方法查询
+python extract/exam_cli.py query \
+  --subject math \
+  --method-tags 数形结合 分类讨论 \
   --limit 5
 ```
 
@@ -319,7 +335,7 @@ python extract/exam_cli.py preview <gen_id>
 }
 ```
 
-**响应**：
+**响应**（含多维度标签）**：
 
 ```json
 {
@@ -333,7 +349,12 @@ python extract/exam_cli.py preview <gen_id>
       "score": 3,
       "difficulty": 2,
       "content_preview": "如图，AB 是 ⊙O 的直径...",
-      "tags": ["圆", "几何"],
+      "tags": ["圆", "几何", "逻辑推理", "含图表", "数形结合", "中档题"],
+      "knowledge_tags": ["圆", "几何"],
+      "ability_tags": ["逻辑推理", "空间想象"],
+      "feature_tags": ["含图表"],
+      "method_tags": ["数形结合"],
+      "position_tag": "中档题",
       "images_count": 1,
       "region": "北京",
       "exam_type": "期中",
@@ -341,6 +362,21 @@ python extract/exam_cli.py preview <gen_id>
       "subject": "math"
     }
   ]
+}
+```
+
+**多维度标签筛选示例**：
+
+```json
+{
+  "subject": "math",
+  "knowledge_tags": ["圆", "二次函数"],
+  "ability_tags": ["逻辑推理"],
+  "feature_tags": ["含图表", "多步骤"],
+  "method_tags": ["数形结合"],
+  "position_tag": ["综合题", "压轴题"],
+  "difficulty": [3, 5],
+  "limit": 10
 }
 ```
 
@@ -396,14 +432,20 @@ python extract/exam_cli.py preview <gen_id>
 
 **参数**：
 - `subject`（必填）：`math` 或 `physics`
-- `type`（必填）：`heatmap` | `trend` | `position_dist` | `tag_tree`
+- `type`（必填）：`heatmap` | `trend` | `position_dist` | `tag_tree` | `tag_dimension`
+- `dimension`（`type=tag_dimension` 时必填）：`knowledge` | `ability` | `feature` | `method` | `position`
 - `region`（可选）：地区筛选
 - `year`（可选）：年份筛选
 
 **示例**：
 
 ```bash
+# 知识点热度图
 curl "https://exam-bank.your-subdomain.workers.dev/api/analytics?subject=math&type=heatmap" \
+  -H "Authorization: Bearer <API_KEY>"
+
+# 各维度标签分布统计
+curl "https://exam-bank.your-subdomain.workers.dev/api/analytics?subject=math&type=tag_dimension&dimension=knowledge" \
   -H "Authorization: Bearer <API_KEY>"
 ```
 

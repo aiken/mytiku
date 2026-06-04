@@ -179,6 +179,54 @@ async function handleAnalytics(req: Request, env: Env): Promise<Response> {
     result = { type: "position_dist", subject, distribution: data.results };
   } else if (type === "tag_tree") {
     result = { type: "tag_tree", subject, tags: await getTagTree(env.DB, subject) };
+  } else if (type === "tag_dimension") {
+    const dimension = url.searchParams.get("dimension") || "knowledge";
+    const dimColumn = {
+      "knowledge": "knowledge_tags",
+      "ability": "ability_tags",
+      "feature": "feature_tags",
+      "method": "method_tags",
+      "position": "position_tag",
+    }[dimension] || "knowledge_tags";
+    
+    // 解析 JSON 数组字段并统计
+    const data = await env.DB.prepare(`
+      SELECT ${dimColumn} as dim_value, COUNT(*) as count
+      FROM questions q
+      JOIN papers p ON q.paper_id = p.paper_id
+      WHERE p.subject = ? AND q.${dimColumn} IS NOT NULL AND q.${dimColumn} != '[]'
+      GROUP BY ${dimColumn}
+      ORDER BY count DESC
+      LIMIT 30
+    `).bind(subject).all();
+    
+    // 展开 JSON 数组统计
+    const tagCounter = new Map<string, number>();
+    for (const row of (data.results || []) as any[]) {
+      const val = row.dim_value;
+      if (!val) continue;
+      try {
+        const tags = dimension === "position" ? [val] : JSON.parse(val);
+        if (Array.isArray(tags)) {
+          for (const t of tags) {
+            if (t && t !== "未分类") {
+              tagCounter.set(t, (tagCounter.get(t) || 0) + row.count);
+            }
+          }
+        }
+      } catch {
+        if (val && val !== "未分类") {
+          tagCounter.set(val, (tagCounter.get(val) || 0) + row.count);
+        }
+      }
+    }
+    
+    const sorted = Array.from(tagCounter.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([tag_name, count]) => ({ tag_name, count }));
+    
+    result = { type: "tag_dimension", subject, dimension, tags: sorted };
   } else {
     return jsonResponse({ error: "Unknown analytics type" }, 400);
   }

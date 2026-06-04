@@ -211,7 +211,7 @@ def infer_school(path_str: str) -> str:
     stem = Path(path_str).stem
     
     # 1. 附中模式（优先级最高）
-   附中_match = re.search(r'(清华|北大|人大|北师大|首师大|理工|交大|铁二|铁路二|民大|师大)附?中', stem)
+    附中_match = re.search(r'(清华|北大|人大|北师大|首师大|理工|交大|铁二|铁路二|民大|师大)附?中', stem)
     if 附中_match:
         school = 附中_match.group(1) + "附中"
         # 统一别名
@@ -856,11 +856,18 @@ def generate_sql_inserts(
         images_json = json.dumps(q.images, ensure_ascii=False) if q.images else "[]"
         options_val = f"'{sanitize_sql(q.options)}'" if q.options else "NULL"
         answer_val = f"'{sanitize_sql(q.answer)}'" if q.answer else "NULL"
+        solution_val = f"'{sanitize_sql(q.solution)}'" if q.solution else "NULL"
+        data_table_val = f"'{sanitize_sql(q.data_table)}'" if q.data_table else "NULL"
+        knowledge_json = json.dumps(q.knowledge_tags, ensure_ascii=False) if q.knowledge_tags else "[]"
+        ability_json = json.dumps(q.ability_tags, ensure_ascii=False) if q.ability_tags else "[]"
+        feature_json = json.dumps(q.feature_tags, ensure_ascii=False) if q.feature_tags else "[]"
+        method_json = json.dumps(q.method_tags, ensure_ascii=False) if q.method_tags else "[]"
 
         stmt = (
             f"INSERT INTO questions ("
             f"question_id, paper_id, question_number, q_type, position, score, "
-            f"difficulty, content, options, answer, tags, images, estimated_time"
+            f"difficulty, content, options, answer, solution, tags, images, data_table, estimated_time, "
+            f"knowledge_tags, ability_tags, feature_tags, method_tags, position_tag"
             f") VALUES ("
             f"'{sanitize_sql(q.question_id)}', "
             f"'{sanitize_sql(q.paper_id)}', "
@@ -872,9 +879,16 @@ def generate_sql_inserts(
             f"'{sanitize_sql(q.content)}', "
             f"{options_val}, "
             f"{answer_val}, "
+            f"{solution_val}, "
             f"'{sanitize_sql(tags_json)}', "
             f"'{sanitize_sql(images_json)}', "
-            f"{q.estimated_time}"
+            f"{data_table_val}, "
+            f"{q.estimated_time}, "
+            f"'{sanitize_sql(knowledge_json)}', "
+            f"'{sanitize_sql(ability_json)}', "
+            f"'{sanitize_sql(feature_json)}', "
+            f"'{sanitize_sql(method_json)}', "
+            f"'{sanitize_sql(q.position_tag)}'"
             f");"
         )
         current_batch.append(stmt)

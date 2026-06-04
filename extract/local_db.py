@@ -511,7 +511,7 @@ class LocalDB:
         )
 
     def _question_to_insert_sql(self, q: Dict) -> str:
-        """将 question 字典转为 INSERT SQL"""
+        """将 question 字典转为 INSERT SQL（包含多维度标签）"""
         def esc(s):
             if s is None:
                 return "NULL"
@@ -520,13 +520,17 @@ class LocalDB:
         return (
             f"INSERT INTO questions ("
             f"question_id, paper_id, question_number, q_type, position, score, difficulty, "
-            f"content, options, answer, solution, tags, images, data_table, estimated_time"
+            f"content, options, answer, solution, tags, images, data_table, estimated_time, "
+            f"knowledge_tags, ability_tags, feature_tags, method_tags, position_tag"
             f") VALUES ("
             f"{esc(q.get('question_id'))}, {esc(q.get('paper_id'))}, {esc(q.get('question_number'))}, "
             f"{esc(q.get('q_type'))}, {esc(q.get('position'))}, {q.get('score', 0)}, {q.get('difficulty', 2)}, "
             f"{esc(q.get('content'))}, {esc(q.get('options'))}, {esc(q.get('answer'))}, "
             f"{esc(q.get('solution'))}, {esc(q.get('tags'))}, {esc(q.get('images'))}, "
-            f"{esc(q.get('data_table'))}, {q.get('estimated_time', 5)}"
+            f"{esc(q.get('data_table'))}, {q.get('estimated_time', 5)}, "
+            f"{esc(q.get('knowledge_tags'))}, {esc(q.get('ability_tags'))}, "
+            f"{esc(q.get('feature_tags'))}, {esc(q.get('method_tags'))}, "
+            f"{esc(q.get('position_tag'))}"
             f");"
         )
 
