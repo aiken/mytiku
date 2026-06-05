@@ -9,7 +9,8 @@ Issue #16: 数学/物理各 100 套试卷验证
 2. 按年份×地区×考试类型分层抽样
 3. 运行 extract_all.py 抽取
 4. 运行 tag_quality.py + metadata_validator.py 统计
-5. 生成 Markdown 验证报告
+5. 从数据库直接计算验收指标
+6. 生成完整 Markdown 验证报告
 """
 
 import json
@@ -20,7 +21,7 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 from random import Random
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 
 # 分层抽样配置
 STRATA_CONFIG = {
@@ -29,7 +30,7 @@ STRATA_CONFIG = {
     "exam_type": ["期中", "期末", "一模", "二模"],
 }
 
-SAMPLES_PER_SUBJECT = 20  # 每科抽样数（测试用，正式运行改为 100）
+SAMPLES_PER_SUBJECT = 100  # 每科抽样数（正式验证）
 SEED = 42  # 可复现
 
 
@@ -150,55 +151,167 @@ def run_extraction(sample: List[Dict], db_path: str, output_dir: str) -> Dict:
 
     return {
         "returncode": result.returncode,
-        "stdout": result.stdout[-2000:] if len(result.stdout) > 2000 else result.stdout,
+        "stdout": result.stdout[-3000:] if len(result.stdout) > 3000 else result.stdout,
         "stderr": result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr,
         "db_path": str(actual_db) if actual_db.exists() else None,
     }
 
 
 def run_tag_quality(db_path: str, output_dir: str) -> Dict:
-    """运行标签质量检查"""
+    """运行标签质量检查，返回终端输出摘要"""
     cmd = [
         sys.executable, "extract/tag_quality.py",
         "--db", db_path,
-        "--format", "json",
-        "--output", str(Path(output_dir) / "tag_quality.json"),
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent.parent)
-
-    # 读取 JSON 结果
-    json_path = Path(output_dir) / "tag_quality.json"
-    if json_path.exists():
-        with open(json_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-
-def run_metadata_validation(db_path: str, output_dir: str) -> Dict:
-    """运行元数据校验"""
-    cmd = [
-        sys.executable, "extract/metadata_validator.py",
-        "--db", db_path,
-        "--format", "json",
+        "--format", "terminal",
         "--output-dir", output_dir,
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+    return {
+        "returncode": result.returncode,
+        "stdout": result.stdout[-2000:] if len(result.stdout) > 2000 else result.stdout,
+    }
 
-    # 读取结果
-    # metadata_validator 目前不支持 json 输出，需要修改
-    # 暂时从 stdout 解析
-    return {"returncode": result.returncode}
+
+def run_metadata_validation(db_path: str, output_dir: str) -> Dict:
+    """运行元数据校验，返回终端输出摘要"""
+    cmd = [
+        sys.executable, "extract/metadata_validator.py",
+        "--db", db_path,
+        "--format", "terminal",
+        "--output-dir", output_dir,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+    return {
+        "returncode": result.returncode,
+        "stdout": result.stdout[-2000:] if len(result.stdout) > 2000 else result.stdout,
+    }
+
+
+def compute_metrics(db_path: str) -> Dict[str, Any]:
+    """从 SQLite 数据库直接计算所有验收指标"""
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    metrics = {}
+
+    # 1. 题目提取成功率 = 有 content 的题目数 / 总题目数
+    cursor.execute("SELECT COUNT(*) as total FROM questions")
+    total_questions = cursor.fetchone()["total"]
+
+    cursor.execute("SELECT COUNT(*) as has_content FROM questions WHERE content IS NOT NULL AND LENGTH(TRIM(content)) > 10")
+    has_content = cursor.fetchone()["has_content"]
+    metrics["extraction_success_rate"] = round(has_content / total_questions * 100, 1) if total_questions > 0 else 0.0
+
+    # 2. 无标签题目比例 = 5 个维度都为空/未分类/空数组的题目数 / 总题目数
+    cursor.execute("""
+        SELECT COUNT(*) as untagged FROM questions
+        WHERE (knowledge_tags IS NULL OR knowledge_tags = '[]' OR knowledge_tags = '["未分类"]')
+          AND (ability_tags IS NULL OR ability_tags = '[]' OR ability_tags = '["未分类"]')
+          AND (feature_tags IS NULL OR feature_tags = '[]' OR feature_tags = '["未分类"]')
+          AND (method_tags IS NULL OR method_tags = '[]' OR method_tags = '["未分类"]')
+          AND (position_tag IS NULL OR position_tag = '' OR position_tag = '未知')
+    """)
+    untagged = cursor.fetchone()["untagged"]
+    metrics["untagged_rate"] = round(untagged / total_questions * 100, 1) if total_questions > 0 else 0.0
+
+    # 3. 每题平均标签数（跨 5 个维度的有效标签总数 / 总题目数）
+    cursor.execute("""
+        SELECT knowledge_tags, ability_tags, feature_tags, method_tags, position_tag
+        FROM questions
+    """)
+    total_tag_count = 0
+    for row in cursor.fetchall():
+        for col in ["knowledge_tags", "ability_tags", "feature_tags", "method_tags"]:
+            val = row[col]
+            if val and val != '[]' and val != '["未分类"]':
+                try:
+                    tags = json.loads(val)
+                    if isinstance(tags, list):
+                        total_tag_count += len([t for t in tags if t and t != "未分类"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        # position_tag 是单个字符串
+        pos = row["position_tag"]
+        if pos and pos.strip() and pos != "未知":
+            total_tag_count += 1
+
+    metrics["avg_tags_per_question"] = round(total_tag_count / total_questions, 1) if total_questions > 0 else 0.0
+
+    # 4. 图片提取成功率 = 有 images 且不为 "[]" 的题目数 / 总题目数
+    cursor.execute("SELECT COUNT(*) as has_image FROM questions WHERE images IS NOT NULL AND images != '[]'")
+    has_image = cursor.fetchone()["has_image"]
+    metrics["image_extraction_rate"] = round(has_image / total_questions * 100, 1) if total_questions > 0 else 0.0
+
+    # 5. 元数据准确率（从 papers 表统计）
+    cursor.execute("SELECT COUNT(*) as total FROM papers")
+    total_papers = cursor.fetchone()["total"]
+
+    cursor.execute("SELECT COUNT(*) as valid FROM papers WHERE district IS NOT NULL AND district != '未知' AND district != ''")
+    valid_district = cursor.fetchone()["valid"]
+
+    cursor.execute("SELECT COUNT(*) as valid FROM papers WHERE school IS NOT NULL AND school != '未知' AND school != ''")
+    valid_school = cursor.fetchone()["valid"]
+
+    cursor.execute("SELECT COUNT(*) as valid FROM papers WHERE exam_type IS NOT NULL AND exam_type != '未知' AND exam_type != ''")
+    valid_exam_type = cursor.fetchone()["valid"]
+
+    # 综合元数据准确率（三个字段都有效）
+    cursor.execute("""
+        SELECT COUNT(*) as valid FROM papers
+        WHERE district IS NOT NULL AND district != '未知' AND district != ''
+          AND school IS NOT NULL AND school != '未知' AND school != ''
+          AND exam_type IS NOT NULL AND exam_type != '未知' AND exam_type != ''
+    """)
+    all_valid = cursor.fetchone()["valid"]
+    metrics["metadata_accuracy"] = round(all_valid / total_papers * 100, 1) if total_papers > 0 else 0.0
+    metrics["metadata_breakdown"] = {
+        "district": round(valid_district / total_papers * 100, 1) if total_papers > 0 else 0.0,
+        "school": round(valid_school / total_papers * 100, 1) if total_papers > 0 else 0.0,
+        "exam_type": round(valid_exam_type / total_papers * 100, 1) if total_papers > 0 else 0.0,
+    }
+
+    # 6. 答案/解析匹配覆盖率 = 有 answer 或 solution 的题目数 / 总题目数
+    cursor.execute("SELECT COUNT(*) as has_answer FROM questions WHERE answer IS NOT NULL AND LENGTH(TRIM(answer)) > 0")
+    has_answer = cursor.fetchone()["has_answer"]
+
+    cursor.execute("SELECT COUNT(*) as has_solution FROM questions WHERE solution IS NOT NULL AND LENGTH(TRIM(solution)) > 0")
+    has_solution = cursor.fetchone()["has_solution"]
+
+    # 至少有一个（answer 或 solution）
+    cursor.execute("""
+        SELECT COUNT(*) as has_either FROM questions
+        WHERE (answer IS NOT NULL AND LENGTH(TRIM(answer)) > 0)
+           OR (solution IS NOT NULL AND LENGTH(TRIM(solution)) > 0)
+    """)
+    has_either = cursor.fetchone()["has_either"]
+    metrics["answer_coverage"] = round(has_either / total_questions * 100, 1) if total_questions > 0 else 0.0
+    metrics["answer_breakdown"] = {
+        "has_answer": has_answer,
+        "has_solution": has_solution,
+        "has_either": has_either,
+    }
+
+    # 基础统计
+    metrics["total_questions"] = total_questions
+    metrics["total_papers"] = total_papers
+
+    conn.close()
+    return metrics
 
 
 def generate_report(
     math_sample: List[Dict],
     physics_sample: List[Dict],
     extraction_result: Dict,
-    tag_quality: Dict,
+    metrics: Dict[str, Any],
+    tag_quality_result: Dict,
+    metadata_result: Dict,
     output_path: str,
 ) -> str:
-    """生成 Markdown 验证报告"""
+    """生成完整 Markdown 验证报告"""
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    total_sample = len(math_sample) + len(physics_sample)
 
     # 统计抽样分布
     def sample_stats(sample: List[Dict]) -> str:
@@ -212,24 +325,27 @@ def generate_report(
         lines.append("**考试类型**: " + ", ".join(f"{e}: {c}" for e, c in exam_types.most_common()))
         return "\n".join(lines)
 
-    # 标签质量统计
-    tag_stats = ""
-    if tag_quality:
-        tag_stats = f"""
-### 标签覆盖率
-| 维度 | 覆盖率 |
-|------|--------|
-| 知识点 | {tag_quality.get('knowledge', {}).get('coverage', 'N/A')} |
-| 能力 | {tag_quality.get('ability', {}).get('coverage', 'N/A')} |
-| 特征 | {tag_quality.get('feature', {}).get('coverage', 'N/A')} |
-| 方法 | {tag_quality.get('method', {}).get('coverage', 'N/A')} |
-| 定位 | {tag_quality.get('position', {}).get('coverage', 'N/A')} |
-"""
+    # 验收指标状态判断
+    def status_emoji(value: float, threshold: float, operator: str = ">=") -> str:
+        if operator == ">=":
+            return "✅ 通过" if value >= threshold else "❌ 未通过"
+        else:
+            return "✅ 通过" if value < threshold else "❌ 未通过"
+
+    # 标签质量输出摘要
+    tag_stdout = tag_quality_result.get("stdout", "")
+    tag_summary = "\n".join([f"    {line}" for line in tag_stdout.strip().split("\n")[:30]]) if tag_stdout else "    [tag_quality.py 输出为空]"
+
+    # 元数据校验输出摘要
+    meta_stdout = metadata_result.get("stdout", "")
+    meta_summary = "\n".join([f"    {line}" for line in meta_stdout.strip().split("\n")[:30]]) if meta_stdout else "    [metadata_validator.py 输出为空]"
 
     report = f"""# 数据抽取验证报告
 
 **生成时间**: {now}
-**验证集规模**: 数学 {len(math_sample)} 套 + 物理 {len(physics_sample)} 套 = {len(math_sample) + len(physics_sample)} 套
+**验证集规模**: 数学 {len(math_sample)} 套 + 物理 {len(physics_sample)} 套 = {total_sample} 套
+**总题目数**: {metrics['total_questions']}
+**总试卷数**: {metrics['total_papers']}
 
 ---
 
@@ -245,48 +361,84 @@ def generate_report(
 
 ## 2. 抽取流程执行
 
-- **命令**: `extract_all.py --input-list validation_file_list.txt`
+- **命令**: `extract_all.py --input <temp_input_dir> --output <output_dir>`
 - **返回码**: {extraction_result['returncode']}
 - **输出摘要**:
 ```
-{extraction_result['stdout'][:1000]}
+{extraction_result['stdout'][:1500]}
 ```
 
 ---
 
 ## 3. 质量统计
 
-{tag_stats}
+### 3.1 标签质量检查 (`tag_quality.py`)
+```
+{tag_summary}
+```
 
-### 元数据准确率
-> 运行 `metadata_validator.py` 生成，见 `reports/` 目录
+### 3.2 元数据校验 (`metadata_validator.py`)
+```
+{meta_summary}
+```
+
+### 3.3 数据库指标汇总
+
+| 指标 | 数值 | 说明 |
+|------|------|------|
+| 总题目数 | {metrics['total_questions']} | 抽取到的全部题目 |
+| 总试卷数 | {metrics['total_papers']} | 抽取到的全部试卷 |
+| 题目提取成功率 | {metrics['extraction_success_rate']}% | content 非空且长度 > 10 |
+| 无标签题目比例 | {metrics['untagged_rate']}% | 5 维度全部缺失 |
+| 每题平均标签数 | {metrics['avg_tags_per_question']} | 跨 5 维度有效标签总数 / 题目数 |
+| 图片提取成功率 | {metrics['image_extraction_rate']}% | images 非空且非 [] |
+| 元数据准确率 | {metrics['metadata_accuracy']}% | district + school + exam_type 均有效 |
+| 答案/解析覆盖率 | {metrics['answer_coverage']}% | answer 或 solution 非空 |
+
+**元数据分项准确率**:
+- 区名 (district): {metrics['metadata_breakdown']['district']}%
+- 学校 (school): {metrics['metadata_breakdown']['school']}%
+- 考试类型 (exam_type): {metrics['metadata_breakdown']['exam_type']}%
+
+**答案/解析分项**:
+- 有答案 (answer): {metrics['answer_breakdown']['has_answer']} 题
+- 有解析 (solution): {metrics['answer_breakdown']['has_solution']} 题
+- 至少一项: {metrics['answer_breakdown']['has_either']} 题
 
 ---
 
-## 4. 问题与改进建议
-
-### 发现的问题
-1. [待填写]
-
-### 改进建议
-1. [待填写]
-
----
-
-## 5. 验收标准检查
+## 4. 验收标准检查
 
 | 检查项 | 标准 | 实际 | 状态 |
 |--------|------|------|------|
-| 题目提取成功率 | ≥ 95% | [待测量] | ⬜ |
-| 无标签题目比例 | < 5% | [待测量] | ⬜ |
-| 每题平均标签数 | ≥ 4 个 | [待测量] | ⬜ |
-| 图片提取成功率 | ≥ 90% | [待测量] | ⬜ |
-| 元数据准确率 | ≥ 80% | [待测量] | ⬜ |
-| 答案/解析匹配 | ≥ 90% | [待测量] | ⬜ |
+| 题目提取成功率 | ≥ 95% | {metrics['extraction_success_rate']}% | {status_emoji(metrics['extraction_success_rate'], 95.0)} |
+| 无标签题目比例 | < 5% | {metrics['untagged_rate']}% | {status_emoji(metrics['untagged_rate'], 5.0, '<')} |
+| 每题平均标签数 | ≥ 4 个 | {metrics['avg_tags_per_question']} | {status_emoji(metrics['avg_tags_per_question'], 4.0)} |
+| 图片提取成功率 | ≥ 90% | {metrics['image_extraction_rate']}% | {status_emoji(metrics['image_extraction_rate'], 90.0)} |
+| 元数据准确率 | ≥ 80% | {metrics['metadata_accuracy']}% | {status_emoji(metrics['metadata_accuracy'], 80.0)} |
+| 答案/解析匹配 | ≥ 90% | {metrics['answer_coverage']}% | {status_emoji(metrics['answer_coverage'], 90.0)} |
+
+---
+
+## 5. 问题与改进建议
+
+### 发现的问题
+1. 无标签题目比例 {metrics['untagged_rate']}% — {'符合标准' if metrics['untagged_rate'] < 5 else '需优化标签规则覆盖'}
+2. 每题平均标签数 {metrics['avg_tags_per_question']} — {'符合标准' if metrics['avg_tags_per_question'] >= 4 else '需增加标签维度覆盖'}
+3. 图片提取成功率 {metrics['image_extraction_rate']}% — {'符合标准' if metrics['image_extraction_rate'] >= 90 else '需检查图片提取逻辑'}
+4. 元数据准确率 {metrics['metadata_accuracy']}% — {'符合标准' if metrics['metadata_accuracy'] >= 80 else '需优化元数据解析'}
+5. 答案/解析覆盖率 {metrics['answer_coverage']}% — {'符合标准' if metrics['answer_coverage'] >= 90 else '需改进答案提取'}
+
+### 改进建议
+1. 针对未通过项，参考 Phase 1 数据质量优化脚本 (`tag_fixer.py`, `metadata_mappings.py`)
+2. 对无标签题目运行 `tag_fixer.py --auto-fix` 批量补全
+3. 对元数据异常试卷运行 `metadata_validator.py` 查看详细问题列表
+4. 人工抽检 20 套（10%）核对提取结果与原始文件
 
 ---
 
 *报告由 validation_runner.py 自动生成*
+*关联 Issue: #16 [Validation] 数据抽取验证*
 """
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
@@ -304,10 +456,11 @@ def main():
 
     print("=" * 60)
     print("数据抽取验证框架 (Issue #16)")
+    print(f"每科抽样数: {SAMPLES_PER_SUBJECT}")
     print("=" * 60)
 
     # 1. 扫描文件
-    print("\n[1/5] 扫描试卷文件...")
+    print("\n[1/6] 扫描试卷文件...")
     all_files = scan_original_files(base_dir)
     print(f"  找到 {len(all_files)} 份原卷版文件")
 
@@ -315,8 +468,11 @@ def main():
     physics_count = sum(1 for f in all_files if f["subject"] == "physics")
     print(f"  数学: {math_count}, 物理: {physics_count}")
 
+    if math_count < SAMPLES_PER_SUBJECT or physics_count < SAMPLES_PER_SUBJECT:
+        print(f"  ⚠️ 警告: 可用文件不足 {SAMPLES_PER_SUBJECT} 套，将使用全部可用文件")
+
     # 2. 分层抽样
-    print(f"\n[2/5] 分层抽样 (每科 {SAMPLES_PER_SUBJECT} 套)...")
+    print(f"\n[2/6] 分层抽样 (每科 {SAMPLES_PER_SUBJECT} 套)...")
     math_sample = stratified_sample(all_files, SAMPLES_PER_SUBJECT, "math")
     physics_sample = stratified_sample(all_files, SAMPLES_PER_SUBJECT, "physics")
     print(f"  数学选中: {len(math_sample)} 套")
@@ -331,26 +487,83 @@ def main():
         json.dump(validation_set, f, ensure_ascii=False, indent=2)
 
     # 3. 运行抽取
-    print(f"\n[3/5] 运行抽取流程...")
+    print(f"\n[3/6] 运行抽取流程...")
     all_sample = math_sample + physics_sample
     extraction_result = run_extraction(all_sample, db_path, str(output_dir))
     print(f"  返回码: {extraction_result['returncode']}")
+    if extraction_result["stderr"]:
+        print(f"  错误输出: {extraction_result['stderr'][:500]}")
     actual_db = extraction_result.get("db_path", db_path)
 
-    # 4. 质量检查
-    print(f"\n[4/5] 运行质量检查...")
-    tag_quality = run_tag_quality(actual_db, str(output_dir))
-    print(f"  标签质量: {len(tag_quality)} 个维度")
+    # 4. 质量检查 — tag_quality
+    print(f"\n[4/6] 运行标签质量检查...")
+    tag_quality_result = run_tag_quality(actual_db, str(output_dir))
+    print(f"  返回码: {tag_quality_result['returncode']}")
 
-    # 5. 生成报告
-    print(f"\n[5/5] 生成验证报告...")
+    # 5. 质量检查 — metadata_validator
+    print(f"\n[5/6] 运行元数据校验...")
+    metadata_result = run_metadata_validation(actual_db, str(output_dir))
+    print(f"  返回码: {metadata_result['returncode']}")
+
+    # 6. 从数据库计算验收指标
+    print(f"\n[6/6] 计算验收指标...")
+    if actual_db and Path(actual_db).exists():
+        metrics = compute_metrics(actual_db)
+        print(f"  题目提取成功率: {metrics['extraction_success_rate']}%")
+        print(f"  无标签比例: {metrics['untagged_rate']}%")
+        print(f"  平均标签数: {metrics['avg_tags_per_question']}")
+        print(f"  图片提取率: {metrics['image_extraction_rate']}%")
+        print(f"  元数据准确率: {metrics['metadata_accuracy']}%")
+        print(f"  答案覆盖率: {metrics['answer_coverage']}%")
+    else:
+        print(f"  ⚠️ 数据库不存在: {actual_db}")
+        metrics = {k: 0.0 for k in [
+            "extraction_success_rate", "untagged_rate", "avg_tags_per_question",
+            "image_extraction_rate", "metadata_accuracy", "answer_coverage",
+            "total_questions", "total_papers",
+        ]}
+        metrics["metadata_breakdown"] = {"district": 0.0, "school": 0.0, "exam_type": 0.0}
+        metrics["answer_breakdown"] = {"has_answer": 0, "has_solution": 0, "has_either": 0}
+
+    # 7. 生成报告
+    print(f"\n[7/7] 生成验证报告...")
     report_path = output_dir / f"validation-report-{datetime.now().strftime('%Y%m%d')}.md"
-    generate_report(math_sample, physics_sample, extraction_result, tag_quality, str(report_path))
+    generate_report(
+        math_sample, physics_sample,
+        extraction_result, metrics,
+        tag_quality_result, metadata_result,
+        str(report_path),
+    )
     print(f"  报告: {report_path}")
 
+    # 打印验收结果摘要
     print("\n" + "=" * 60)
-    print("验证完成!")
-    print(f"输出目录: {output_dir}")
+    print("验收标准检查摘要")
+    print("=" * 60)
+    checks = [
+        ("题目提取成功率", metrics["extraction_success_rate"], 95.0, ">="),
+        ("无标签题目比例", metrics["untagged_rate"], 5.0, "<"),
+        ("每题平均标签数", metrics["avg_tags_per_question"], 4.0, ">="),
+        ("图片提取成功率", metrics["image_extraction_rate"], 90.0, ">="),
+        ("元数据准确率", metrics["metadata_accuracy"], 80.0, ">="),
+        ("答案/解析匹配", metrics["answer_coverage"], 90.0, ">="),
+    ]
+    all_pass = True
+    for name, value, threshold, op in checks:
+        if op == ">=":
+            passed = value >= threshold
+        else:
+            passed = value < threshold
+        status = "✅" if passed else "❌"
+        print(f"  {status} {name}: {value} (标准: {op} {threshold})")
+        if not passed:
+            all_pass = False
+
+    print("=" * 60)
+    if all_pass:
+        print("🎉 所有验收标准通过！")
+    else:
+        print("⚠️ 部分验收标准未通过，请参考报告中的改进建议。")
     print("=" * 60)
 
 

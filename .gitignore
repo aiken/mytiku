@@ -13,6 +13,7 @@ B京物理八九/
 # 测试输出目录
 test_extract/
 extract_output/
+reports/
 
 # Node.js
 node_modules/
