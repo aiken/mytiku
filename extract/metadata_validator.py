@@ -70,6 +70,8 @@ class MetadataValidator:
         # 检查是否是"区名+统考"格式
         if "统考" in school:
             district_part = school.replace("统考", "").strip()
+            if district_part in self.VALID_DISTRICTS:
+                return True
             if district_part + "区" in self.VALID_DISTRICTS:
                 return True
         return False

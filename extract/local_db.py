@@ -136,8 +136,8 @@ class LocalDB:
         try:
             self.conn.execute("""
                 INSERT OR REPLACE INTO papers 
-                (paper_id, title, subject, region, district, school, exam_type, year, total_score, question_count, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (paper_id, title, subject, region, district, school, exam_type, round, year, total_score, question_count, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 paper.get("paper_id"),
                 paper.get("title", ""),
@@ -146,6 +146,7 @@ class LocalDB:
                 paper.get("district", ""),
                 paper.get("school", ""),
                 paper.get("exam_type", ""),
+                paper.get("round", ""),
                 paper.get("year", 0),
                 paper.get("total_score", 100),
                 paper.get("question_count", 0),
