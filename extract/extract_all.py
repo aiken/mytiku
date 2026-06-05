@@ -87,7 +87,8 @@ class ExtractedQuestion:
     """提取出的单道题目（与 schema.sql 字段对齐 + 多维度标签）"""
     question_id: str
     paper_id: str
-    question_number: str          # 字符串，支持子题如 "17(1)"
+    parent_question_id: Optional[str] = None  # 子题关联父题
+    question_number: str = ""          # 字符串，支持子题如 "17(1)"
     q_type: str = "comprehensive" # choice/fill/calculation/proof/experiment/reading/comprehensive
     position: str = "medium"      # basic/medium/comprehensive/advanced
     score: int = 0
@@ -754,6 +755,44 @@ def extract_docx_questions(
             position_tag=tag_result["position"],
         )
         questions.append(q_obj)
+
+        # 子题拆分：检测 (1)(2)(3) / ①②③ 等子题格式
+        sub_questions = split_sub_questions(q_text)
+        if sub_questions:
+            for sub in sub_questions:
+                sub_num = sub["sub_number"]
+                sub_content = sub["content"]
+                # 子题继承父题标签，同时可基于内容重新打标签
+                sub_tag_result = auto_tag(sub_content, paper_meta.subject, f"{q_num}({sub_num})", difficulty, q_type)
+                sub_all_tags = merge_tags(sub_tag_result)
+                # 子题标签：继承父题 + 子题自身标签（去重）
+                inherited_knowledge = list(set(tag_result["knowledge"] + sub_tag_result["knowledge"]))
+                inherited_ability = list(set(tag_result["ability"] + sub_tag_result["ability"]))
+                inherited_feature = list(set(tag_result["feature"] + sub_tag_result["feature"]))
+                inherited_method = list(set(tag_result["method"] + sub_tag_result["method"]))
+                
+                sub_q_obj = ExtractedQuestion(
+                    question_id=build_question_id(paper_meta.paper_id, f"{q_num}_{sub_num}"),
+                    paper_id=paper_meta.paper_id,
+                    parent_question_id=q_obj.question_id,  # 关联父题
+                    question_number=f"{q_num}({sub_num})",
+                    q_type=q_type,
+                    position=position,
+                    score=max(1, score // len(sub_questions)),  # 分数均分
+                    difficulty=difficulty,
+                    content=sub_content,
+                    options=None,  # 子题通常无选项
+                    answer=None,   # 子题答案需单独提取
+                    tags=sub_all_tags,
+                    images=[],
+                    estimated_time=max(1, score // len(sub_questions)),
+                    knowledge_tags=inherited_knowledge,
+                    ability_tags=inherited_ability,
+                    feature_tags=inherited_feature,
+                    method_tags=inherited_method,
+                    position_tag=tag_result["position"],  # 继承父题定位
+                )
+                questions.append(sub_q_obj)
 
     # Word 图片提取（python-docx 原生支持有限，尝试提取内嵌图）
     fig_counter: Dict[int, int] = {}
