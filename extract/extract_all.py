@@ -1038,12 +1038,38 @@ def find_paired_files(all_files: List[str]) -> List[Tuple[str, Optional[str]]]:
     将文件列表配对为 (原卷版路径, 解析版路径)。
     配对策略：
       1. 按父目录分组
-      2. 同目录下，文件名最相似的原卷版/解析版配对
-      3. 未配对的原卷版，解析版路径为 None
+      2. 同目录下，按年份进一步分组
+      3. 同一年份内，使用全局最优配对（最大化总相似度）
+      4. 未配对的原卷版，解析版路径为 None
     返回: [(original_path, answer_path_or_None), ...]
     """
     from collections import defaultdict
     import difflib
+
+    def extract_year(stem: str) -> str:
+        """从文件名提取年份（如 2021-2022）"""
+        m = re.search(r'(\d{4})[\-~—](\d{4})', stem)
+        if m:
+            return m.group(0)
+        m = re.search(r'(\d{4})', stem)
+        if m:
+            return m.group(1)
+        return ""
+
+    def clean_stem(stem: str) -> str:
+        """清理文件名用于相似度比较"""
+        return re.sub(r'（原卷版）|（解析版）|原卷版|解析版|答案版|解答版|参考答案|答案解析|\s+', '', stem)
+
+    def similarity(orig_stem: str, ans_stem: str) -> float:
+        """计算两个文件名的相似度，年份不同则返回 0"""
+        orig_year = extract_year(orig_stem)
+        ans_year = extract_year(ans_stem)
+        # 年份必须匹配
+        if orig_year and ans_year and orig_year != ans_year:
+            return 0.0
+        clean_orig = clean_stem(orig_stem)
+        clean_ans = clean_stem(ans_stem)
+        return difflib.SequenceMatcher(None, clean_orig, clean_ans).ratio()
 
     # 按父目录分组
     dir_files: Dict[str, List[str]] = defaultdict(list)
@@ -1056,36 +1082,76 @@ def find_paired_files(all_files: List[str]) -> List[Tuple[str, Optional[str]]]:
         originals = [f for f in files if is_original_file(Path(f).stem)]
         answers = [f for f in files if is_answer_file(Path(f).stem)]
 
-        # 简单配对：对每个原卷版，找文件名最相似的解析版
-        used_answers = set()
-        for orig in originals:
-            orig_stem = Path(orig).stem
-            best_match = None
-            best_ratio = 0.0
-            for ans in answers:
-                if ans in used_answers:
-                    continue
-                ans_stem = Path(ans).stem
-                # 去掉"原卷版"/"解析版"等关键词后比较相似度
-                clean_orig = re.sub(r'（原卷版）|（解析版）|原卷版|解析版|答案版|解答版|参考答案|答案解析|\s+', '', orig_stem)
-                clean_ans = re.sub(r'（原卷版）|（解析版）|原卷版|解析版|答案版|解答版|参考答案|答案解析|\s+', '', ans_stem)
-                ratio = difflib.SequenceMatcher(None, clean_orig, clean_ans).ratio()
-                if ratio > best_ratio and ratio > 0.5:  # 相似度阈值
-                    best_ratio = ratio
-                    best_match = ans
-
-            if best_match:
-                used_answers.add(best_match)
-                paired.append((orig, best_match))
-            else:
+        if not answers:
+            for orig in originals:
                 paired.append((orig, None))
+            continue
 
-        # 未配对的原卷版（兜底：所有非解析版文件）
-        other_files = [f for f in files if not is_answer_file(Path(f).stem) and f not in [p[0] for p in paired]]
-        for f in other_files:
-            # 检查是否已作为原卷版配对
-            if f not in [p[0] for p in paired]:
-                paired.append((f, None))
+        # 按年份分组
+        year_groups: Dict[str, Dict[str, List[str]]] = defaultdict(lambda: {"originals": [], "answers": []})
+        for orig in originals:
+            year = extract_year(Path(orig).stem)
+            year_groups[year]["originals"].append(orig)
+        for ans in answers:
+            year = extract_year(Path(ans).stem)
+            year_groups[year]["answers"].append(ans)
+
+        # 同一年份内使用全局最优配对
+        for year, group in year_groups.items():
+            group_origs = group["originals"]
+            group_answers = group["answers"]
+
+            if not group_answers:
+                for orig in group_origs:
+                    paired.append((orig, None))
+                continue
+
+            # 构建相似度矩阵
+            sim_matrix = []
+            for orig in group_origs:
+                orig_stem = Path(orig).stem
+                row = []
+                for ans in group_answers:
+                    ans_stem = Path(ans).stem
+                    sim = similarity(orig_stem, ans_stem)
+                    row.append(sim)
+                sim_matrix.append(row)
+
+            # 贪婪全局最优配对：每次选择相似度最高的未配对组合
+            used_orig = set()
+            used_ans = set()
+            local_paired: Dict[str, Optional[str]] = {}
+
+            # 将所有可能的配对按相似度降序排列
+            all_pairs = []
+            for i, orig in enumerate(group_origs):
+                for j, ans in enumerate(group_answers):
+                    all_pairs.append((sim_matrix[i][j], i, j))
+            all_pairs.sort(reverse=True)
+
+            for sim, i, j in all_pairs:
+                if sim < 0.7:  # 最低相似度阈值
+                    break
+                orig = group_origs[i]
+                ans = group_answers[j]
+                if orig not in used_orig and ans not in used_ans:
+                    used_orig.add(orig)
+                    used_ans.add(ans)
+                    local_paired[orig] = ans
+
+            # 未配对的原卷版
+            for orig in group_origs:
+                if orig not in used_orig:
+                    local_paired[orig] = None
+
+            for orig, ans in local_paired.items():
+                paired.append((orig, ans))
+
+        # 处理未按年份分组到的文件（兜底）
+        all_paired_origs = set(p[0] for p in paired)
+        for orig in originals:
+            if orig not in all_paired_origs:
+                paired.append((orig, None))
 
     return paired
 
@@ -1187,6 +1253,87 @@ def extract_answers_from_text(text: str) -> Dict[str, Dict[str, str]]:
                 "answer": answer or "",
                 "solution": solution or "",
             }
+        
+        # 处理子题：在主题号片段中按子题号拆分
+        sub_splits = split_sub_questions(q_text)
+        if sub_splits:
+            for sub in sub_splits:
+                sub_num = sub["sub_number"]
+                sub_content = sub["content"]
+                
+                # 提取子题的答案和解析
+                sub_answer = None
+                sub_solution_parts = []
+                sub_detail_text = ""
+                
+                m = re.search(r'【答案】\s*([^\n【]+)', sub_content)
+                if m:
+                    sub_answer = m.group(1).strip()
+                
+                m = re.search(r'【分析】\s*(.+?)(?=【|$)', sub_content, re.DOTALL)
+                if m:
+                    sub_solution_parts.append(f"【分析】{m.group(1).strip()}")
+                
+                m = re.search(r'【详解】\s*(.+?)(?=【|$)', sub_content, re.DOTALL)
+                if m:
+                    sub_detail_text = m.group(1).strip()
+                    sub_solution_parts.append(f"【详解】{sub_detail_text}")
+                
+                if not sub_solution_parts:
+                    m = re.search(r'【解析】\s*(.+?)(?=【|$)', sub_content, re.DOTALL)
+                    if m:
+                        sub_detail_text = m.group(1).strip()
+                        sub_solution_parts.append(f"【解析】{sub_detail_text}")
+                
+                m = re.search(r'【点睛】\s*(.+?)(?=【|$)', sub_content, re.DOTALL)
+                if m:
+                    sub_solution_parts.append(f"【点睛】{m.group(1).strip()}")
+                
+                sub_solution = "\n".join(sub_solution_parts) if sub_solution_parts else None
+                
+                # 如果子题无【答案】标记，从【详解】/【解析】中提取
+                if not sub_answer and sub_detail_text:
+                    m = re.search(r'故选[：:]\s*([A-D])', sub_detail_text)
+                    if not m:
+                        m = re.search(r'故选\s*([A-D])', sub_detail_text)
+                    if not m:
+                        m = re.search(r'选\s*([A-D])[\.．、]?\s*$', sub_detail_text, re.MULTILINE)
+                    if not m:
+                        m = re.search(r'答案[是为]\s*([A-D])', sub_detail_text)
+                    if m:
+                        sub_answer = m.group(1)
+                    
+                    if not sub_answer:
+                        m = re.search(r'故答案[是为][：:]\s*([^\n；。]+)', sub_detail_text)
+                        if not m:
+                            m = re.search(r'答案[是为][：:]\s*([^\n；。]+)', sub_detail_text)
+                        if not m:
+                            m = re.search(r'[是为][：:]\s*([^\n；。]{1,30})[。；]', sub_detail_text)
+                        if m:
+                            ans = m.group(1).strip()
+                            if len(ans) <= 50:
+                                sub_answer = ans
+                    
+                    if not sub_answer:
+                        lines = [l.strip() for l in sub_detail_text.split('\n') if l.strip()]
+                        if lines:
+                            last_line = lines[-1]
+                            if 1 <= len(last_line) <= 30:
+                                sub_answer = last_line
+                
+                # 如果子题没有独立的答案/解析，继承父题的
+                if not sub_answer and answer:
+                    sub_answer = answer
+                if not sub_solution and solution:
+                    sub_solution = solution
+                
+                if sub_answer or sub_solution:
+                    # 子题键格式: "27(1)"
+                    sub_key = f"{q_num_str}({sub_num})"
+                    answer_map[sub_key] = {
+                        "answer": sub_answer or "",
+                        "solution": sub_solution or "",
+                    }
 
     return answer_map
 

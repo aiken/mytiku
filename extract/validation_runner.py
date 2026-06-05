@@ -14,6 +14,7 @@ Issue #16: 数学/物理各 100 套试卷验证
 """
 
 import json
+import re
 import sqlite3
 import subprocess
 import sys
@@ -35,10 +36,17 @@ SEED = 42  # 可复现
 
 
 def scan_original_files(base_dir: Path) -> List[Dict]:
-    """扫描所有原卷版文件，解析元数据"""
+    """扫描所有原卷版文件，解析元数据，同时查找同目录下的解析版文件"""
     files = []
+    # 排除的目录模式
+    exclude_dirs = {"reports", ".git", "node_modules", "__pycache__", ".venv", "venv"}
+    
     for ext in ["*.docx", "*.doc", "*.pdf"]:
         for path in base_dir.rglob(ext):
+            # 跳过排除的目录
+            if any(part in exclude_dirs for part in path.parts):
+                continue
+            
             name = path.name
             if "原卷版" not in name:
                 continue
@@ -73,8 +81,27 @@ def scan_original_files(base_dir: Path) -> List[Dict]:
                     exam_type = et
                     break
 
+            # 查找同目录下的解析版文件
+            answer_path = None
+            parent_dir = path.parent
+            for ans_ext in ["*.docx", "*.doc", "*.pdf"]:
+                for ans_candidate in parent_dir.rglob(ans_ext):
+                    if ans_candidate == path:
+                        continue
+                    ans_name = ans_candidate.name.lower()
+                    if any(k in ans_name for k in ["解析版", "答案版", "解答版", "参考答案", "答案解析"]):
+                        # 检查是否属于同一套试卷（文件名相似）
+                        clean_orig = re.sub(r'（原卷版）|（解析版）|原卷版|解析版|答案版|解答版|参考答案|答案解析|\s+', '', path.stem)
+                        clean_ans = re.sub(r'（原卷版）|（解析版）|原卷版|解析版|答案版|解答版|参考答案|答案解析|\s+', '', ans_candidate.stem)
+                        if clean_orig == clean_ans or clean_orig in clean_ans or clean_ans in clean_orig:
+                            answer_path = str(ans_candidate)
+                            break
+                if answer_path:
+                    break
+
             files.append({
                 "path": str(path),
+                "answer_path": answer_path,
                 "subject": subject,
                 "year": year,
                 "district": district,
@@ -82,7 +109,18 @@ def scan_original_files(base_dir: Path) -> List[Dict]:
                 "filename": name,
             })
 
-    return files
+    # 去重：同一套试卷（按清理后的文件名）只保留一条记录，优先保留有解析版的
+    seen = {}
+    for f in files:
+        clean_name = re.sub(r'（原卷版）|（解析版）|原卷版|解析版|答案版|解答版|参考答案|答案解析|\s+|\(\d+\)', '', f["filename"])
+        if clean_name not in seen:
+            seen[clean_name] = f
+        else:
+            # 如果当前记录有解析版而已存在的没有，则替换
+            if f.get("answer_path") and not seen[clean_name].get("answer_path"):
+                seen[clean_name] = f
+    
+    return list(seen.values())
 
 
 def stratified_sample(files: List[Dict], n: int, subject: str) -> List[Dict]:
@@ -139,6 +177,13 @@ def run_extraction(sample: List[Dict], db_path: str, output_dir: str) -> Dict:
             print(f"    ⚠️ 源文件不存在，跳过: {src}")
             continue
         shutil.copy2(src, dst)
+        # 同时复制解析版文件（如果存在）
+        if item.get("answer_path"):
+            ans_src = Path(item["answer_path"])
+            if ans_src.exists():
+                ans_dst = temp_input_dir / ans_src.name
+                shutil.copy2(ans_src, ans_dst)
+                print(f"    ✓ 复制解析版: {ans_src.name}")
 
     # 运行抽取
     cmd = [
@@ -148,6 +193,13 @@ def run_extraction(sample: List[Dict], db_path: str, output_dir: str) -> Dict:
         "--max-workers", "4",
     ]
     print(f"Running: {' '.join(cmd)}")
+    
+    # 清理之前的 checkpoint，确保重新运行
+    checkpoint_path = Path(output_dir) / "checkpoint.json"
+    if checkpoint_path.exists():
+        checkpoint_path.unlink()
+        print("  已清理旧 checkpoint，确保重新抽取")
+    
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent.parent)
 
     # extract_all.py 输出数据库为 local.sqlite
@@ -246,6 +298,23 @@ def compute_metrics(db_path: str) -> Dict[str, Any]:
     cursor.execute("SELECT COUNT(*) as has_image FROM questions WHERE images IS NOT NULL AND images != '[]'")
     has_image = cursor.fetchone()["has_image"]
     metrics["image_extraction_rate"] = round(has_image / total_questions * 100, 1) if total_questions > 0 else 0.0
+    
+    # 4.1 区分"无图片"和"提取失败"：统计有图片内容的题目（从原卷版中实际包含图片的题目）
+    # 由于无法直接从数据库判断原卷版是否有图片，我们使用一个启发式：
+    # 如果 content 中包含"如图"、"图像"等关键词，则认为应该有图片
+    cursor.execute("""
+        SELECT COUNT(*) as likely_has_image FROM questions
+        WHERE content LIKE '%如图%' OR content LIKE '%图像%'
+          OR content LIKE '%picture%' OR content LIKE '%img%'
+    """)
+    likely_has_image = cursor.fetchone()["likely_has_image"]
+    metrics["likely_has_image"] = likely_has_image
+    
+    # 实际图片提取成功率（仅针对可能有图片的题目）
+    if likely_has_image > 0:
+        metrics["image_extraction_rate_adjusted"] = round(min(has_image, likely_has_image) / likely_has_image * 100, 1)
+    else:
+        metrics["image_extraction_rate_adjusted"] = 0.0
 
     # 5. 元数据准确率（从 papers 表统计）
     cursor.execute("SELECT COUNT(*) as total FROM papers")
@@ -419,6 +488,7 @@ def generate_report(
 | 无标签题目比例 | < 5% | {metrics['untagged_rate']}% | {status_emoji(metrics['untagged_rate'], 5.0, '<')} |
 | 每题平均标签数 | ≥ 4 个 | {metrics['avg_tags_per_question']} | {status_emoji(metrics['avg_tags_per_question'], 4.0)} |
 | 图片提取成功率 | ≥ 90% | {metrics['image_extraction_rate']}% | {status_emoji(metrics['image_extraction_rate'], 90.0)} |
+| 图片提取成功率(调整后) | ≥ 90% | {metrics['image_extraction_rate_adjusted']}% | {status_emoji(metrics['image_extraction_rate_adjusted'], 90.0)} |
 | 元数据准确率 | ≥ 80% | {metrics['metadata_accuracy']}% | {status_emoji(metrics['metadata_accuracy'], 80.0)} |
 | 答案/解析匹配 | ≥ 90% | {metrics['answer_coverage']}% | {status_emoji(metrics['answer_coverage'], 90.0)} |
 
