@@ -29,7 +29,7 @@ STRATA_CONFIG = {
     "exam_type": ["期中", "期末", "一模", "二模"],
 }
 
-SAMPLES_PER_SUBJECT = 100  # 每科抽样数
+SAMPLES_PER_SUBJECT = 20  # 每科抽样数（测试用，正式运行改为 100）
 SEED = 42  # 可复现
 
 
@@ -145,10 +145,14 @@ def run_extraction(sample: List[Dict], db_path: str, output_dir: str) -> Dict:
     print(f"Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent.parent)
 
+    # extract_all.py 输出数据库为 local.sqlite
+    actual_db = Path(output_dir) / "local.sqlite"
+
     return {
         "returncode": result.returncode,
         "stdout": result.stdout[-2000:] if len(result.stdout) > 2000 else result.stdout,
         "stderr": result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr,
+        "db_path": str(actual_db) if actual_db.exists() else None,
     }
 
 
@@ -331,10 +335,11 @@ def main():
     all_sample = math_sample + physics_sample
     extraction_result = run_extraction(all_sample, db_path, str(output_dir))
     print(f"  返回码: {extraction_result['returncode']}")
+    actual_db = extraction_result.get("db_path", db_path)
 
     # 4. 质量检查
     print(f"\n[4/5] 运行质量检查...")
-    tag_quality = run_tag_quality(db_path, str(output_dir))
+    tag_quality = run_tag_quality(actual_db, str(output_dir))
     print(f"  标签质量: {len(tag_quality)} 个维度")
 
     # 5. 生成报告
