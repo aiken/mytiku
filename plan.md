@@ -53,7 +53,7 @@
 | #6 | 试卷详情端点 GET /api/paper/:id | ✅ 已关闭 | src/index.ts + src/db.ts |
 | #7 | 标签自动补全 GET /api/tags/suggest | ✅ 已关闭 | src/index.ts + src/db.ts |
 | #16 | 数据抽取验证框架 | 🔄 框架完成 | validation_runner.py |
-| #8 | 子题拆分增强 | 🔄 Schema 完成 | schema.sql + local_db.py |
+| #8 | 子题拆分增强 | ✅ 已完成 | schema.sql + local_db.py + extract_all.py |
 
 ---
 
