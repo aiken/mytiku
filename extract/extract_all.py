@@ -1139,6 +1139,121 @@ def extract_answers_from_text(text: str) -> Dict[str, Dict[str, str]]:
     return answer_map
 
 
+def extract_answers_from_end(text: str) -> Dict[str, Dict[str, str]]:
+    """
+    从试卷末尾的"参考答案"区域提取答案和解析。
+    作为成对提取的补充方案（当没有独立解析版时使用）。
+    
+    识别模式：
+      - "参考答案" / "答案" / "解答" 标题
+      - "一、选择题" / "二、填空题" 等分类
+      - 题号 + 答案内容
+    
+    返回: {题号字符串: {"answer": "...", "solution": "..."}}
+    """
+    answer_map: Dict[str, Dict[str, str]] = {}
+    
+    # 识别参考答案区域（从最后一个匹配开始）
+    # 匹配 "参考答案"、"答案"、"解答"、"解析" 等标题
+    end_markers = [
+        r'(?:^|\n)\s*【?参考答案】?\s*(?:\n|$)',
+        r'(?:^|\n)\s*【?答案与解析】?\s*(?:\n|$)',
+        r'(?:^|\n)\s*【?答案解析】?\s*(?:\n|$)',
+        r'(?:^|\n)\s*【?解答】?\s*(?:\n|$)',
+        r'(?:^|\n)\s*【?解析】?\s*(?:\n|$)',
+        r'(?:^|\n)\s*【?答案】?\s*(?:\n|$)',
+    ]
+    
+    end_pos = -1
+    for pattern in end_markers:
+        matches = list(re.finditer(pattern, text, re.MULTILINE))
+        if matches:
+            # 取最后一个匹配的位置
+            last_match = matches[-1]
+            if last_match.start() > end_pos:
+                end_pos = last_match.start()
+    
+    if end_pos < 0:
+        return answer_map  # 未找到参考答案区域
+    
+    # 提取参考答案区域的文本
+    answer_section = text[end_pos:]
+    
+    # 按题号匹配答案
+    # 格式1: 题号 + 答案（如 "1. A" 或 "1.A"）
+    # 格式2: 题号 + 详细解析
+    
+    # 尝试按行分割，匹配题号
+    lines = answer_section.split('\n')
+    current_q_num = None
+    current_content = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # 匹配题号："1."、"1．"、"1、"、"(1)"、"（1）" 等
+        m = re.match(r'^(\d+)[\.．、]\s*(.*)', line)
+        if not m:
+            m = re.match(r'^【?(\d+)】?\s*[\.．、]?\s*(.*)', line)
+        if not m:
+            m = re.match(r'^第\s*(\d+)\s*题\s*[\.．、]?\s*(.*)', line)
+        
+        if m:
+            # 保存上一题
+            if current_q_num is not None and current_content:
+                _parse_answer_content(current_q_num, '\n'.join(current_content), answer_map)
+            
+            current_q_num = m.group(1)
+            current_content = [m.group(2)]
+        elif current_q_num is not None:
+            current_content.append(line)
+    
+    # 保存最后一题
+    if current_q_num is not None and current_content:
+        _parse_answer_content(current_q_num, '\n'.join(current_content), answer_map)
+    
+    return answer_map
+
+
+def _parse_answer_content(q_num: str, content: str, answer_map: Dict[str, Dict[str, str]]) -> None:
+    """解析单题答案内容，提取答案和解析"""
+    content = content.strip()
+    if not content:
+        return
+    
+    answer = None
+    solution = None
+    
+    # 尝试提取【答案】/【解析】标记
+    m = re.search(r'【答案】\s*([^\n【]+)', content)
+    if m:
+        answer = m.group(1).strip()
+    
+    m = re.search(r'【解析】\s*(.+?)(?=【|$)', content, re.DOTALL)
+    if m:
+        solution = f"【解析】{m.group(1).strip()}"
+    
+    # 如果没有标记，尝试简单提取
+    if not answer:
+        # 选择题: 首字母是 A/B/C/D
+        if re.match(r'^[A-D][\.．、]?\s*$', content):
+            answer = content[0]
+        # 填空题: 提取第一行作为答案（如果较短）
+        elif len(content) <= 50:
+            answer = content
+        # 解答题: 整个内容作为解析
+        else:
+            solution = content
+    
+    if answer or solution:
+        answer_map[q_num] = {
+            "answer": answer or "",
+            "solution": solution or "",
+        }
+
+
 def merge_answers_to_questions(
     questions: List[ExtractedQuestion],
     answer_map: Dict[str, Dict[str, str]],
@@ -1270,6 +1385,31 @@ def process_single_file(
                         logger.info(f"  解析版合并: {matched}/{len(qs)} 题匹配到答案/解析")
             except Exception as e:
                 logger.warning(f"  解析版处理失败 {answer_file_path}: {e}")
+        
+        # 如果没有解析版，尝试从原卷版末尾的"参考答案"区域提取（补充方案）
+        elif qs and not any(q.answer or q.solution for q in qs):
+            try:
+                # 重新读取原卷版全文
+                orig_ext = Path(file_path).suffix.lower()
+                if orig_ext == ".pdf" and fitz:
+                    orig_doc = fitz.open(file_path)
+                    orig_text = "\n".join(page.get_text("text") for page in orig_doc)
+                    orig_doc.close()
+                elif orig_ext in (".docx", ".doc") and Document:
+                    orig_doc = Document(file_path)
+                    orig_text = "\n".join(p.text for p in orig_doc.paragraphs if p.text.strip())
+                else:
+                    orig_text = ""
+                
+                if orig_text:
+                    answer_map = extract_answers_from_end(orig_text)
+                    if answer_map:
+                        merge_answers_to_questions(qs, answer_map)
+                        result["questions"] = [asdict(q) for q in qs]
+                        matched = sum(1 for q in qs if q.answer or q.solution)
+                        logger.info(f"  末尾答案提取: {matched}/{len(qs)} 题匹配到答案/解析")
+            except Exception as e:
+                logger.warning(f"  末尾答案提取失败: {e}")
 
     except Exception as e:
         logger.exception(f"处理文件失败: {file_path}")
