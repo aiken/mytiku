@@ -38,6 +38,22 @@
 - [x] `src/index.ts` 新增 `/api/analytics?type=tag_dimension` 统计端点
 - [x] `README.md` 更新多维度标签查询示例
 
+### GitHub Issues 完成状态
+
+| Issue | 标题 | 状态 | 提交 |
+|-------|------|------|------|
+| #17 | 知识点标签覆盖率低 64.3%→92.9% | ✅ 已关闭 | tag_rules.py 增强 |
+| #18 | 方法标签覆盖率低 53.6%→82.1% | ✅ 已关闭 | knowledge_method_map |
+| #19 | 答案提取覆盖率 78.6%→100% | ✅ 已关闭 | extract_answers_from_text 增强 |
+| #1 | 标签质量检查脚本 | ✅ 已关闭 | tag_quality.py |
+| #2 | 批量标签修正工具 | ✅ 已关闭 | tag_fixer.py |
+| #3 | 试卷元数据校验与标准化 | ✅ 已关闭 | metadata_mappings.py + metadata_validator.py |
+| #4 | 全文搜索端点 POST /api/search | ✅ 已关闭 | src/index.ts + src/db.ts |
+| #5 | 相似题目推荐 GET /api/similar/:id | ✅ 已关闭 | src/index.ts + src/db.ts |
+| #6 | 试卷详情端点 GET /api/paper/:id | ✅ 已关闭 | src/index.ts + src/db.ts |
+| #7 | 标签自动补全 GET /api/tags/suggest | ✅ 已关闭 | src/index.ts + src/db.ts |
+| #16 | 数据抽取验证框架 | 🔄 框架完成 | validation_runner.py |
+
 ---
 
 ## 标签体系 v3（5 维度 + 来源信息）
