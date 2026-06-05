@@ -52,7 +52,7 @@
 | #5 | 相似题目推荐 GET /api/similar/:id | ✅ 已关闭 | src/index.ts + src/db.ts |
 | #6 | 试卷详情端点 GET /api/paper/:id | ✅ 已关闭 | src/index.ts + src/db.ts |
 | #7 | 标签自动补全 GET /api/tags/suggest | ✅ 已关闭 | src/index.ts + src/db.ts |
-| #16 | 数据抽取验证框架 | 🔄 框架完成 | validation_runner.py |
+| #16 | 数据抽取验证框架 | ✅ 已关闭 | validation_runner.py + sample_inspector.py |
 | #8 | 子题拆分增强 | ✅ 已完成 | schema.sql + local_db.py + extract_all.py |
 | #9 | 答案/解析分离 | ✅ 已完成 | extract_all.py extract_answers_from_end() |
 | #11 | Web 管理后台 | ✅ 已完成 | admin/index.html |
@@ -256,62 +256,62 @@
     4. 通过题号匹配，合并到对应题目
   - 预期覆盖率：~90% 题目有答案和解析
 
-- [ ] **标签质量检查脚本** `extract/tag_quality.py`
+- [x] **标签质量检查脚本** `extract/tag_quality.py`
   - 统计无标签题目比例（目标 < 5%）
   - 统计各维度标签覆盖率
   - 输出需要人工复核的题目列表
   
-- [ ] **批量标签修正工具** `extract/tag_fixer.py`
+- [x] **批量标签修正工具** `extract/tag_fixer.py`
   - 按内容模式批量修正标签
   - 支持正则匹配 + 标签增删
   - 支持从本地 SQLite 直接 UPDATE
 
-- [ ] **试卷元数据校验**
+- [x] **试卷元数据校验**
   - 检查 district/school/round 提取准确率
   - 建立学校别名映射表（如"四中"→"北京四中"）
   - 建立区名标准化映射
 
 ### Phase 2：API 增强（中优先级）
 
-- [ ] **全文搜索端点** `POST /api/search`
+- [x] **全文搜索端点** `POST /api/search`
   - 基于 D1 FTS5 全文搜索
   - 支持关键词 + 标签联合筛选
   
-- [ ] **相似题目推荐** `GET /api/similar/:question_id`
+- [x] **相似题目推荐** `GET /api/similar/:question_id`
   - 基于标签重叠度计算相似度
   - 返回 Top 5 相似题目
   
-- [ ] **试卷详情端点** `GET /api/paper/:paper_id`
+- [x] **试卷详情端点** `GET /api/paper/:paper_id`
   - 返回试卷元数据 + 题目列表
   - 支持按题号排序
 
-- [ ] **标签自动补全** `GET /api/tags/suggest?q=圆`
+- [x] **标签自动补全** `GET /api/tags/suggest?q=圆`
   - 输入前缀返回匹配标签
   - 支持按学科过滤
 
 ### Phase 3：提取优化（中优先级）
 
-- [ ] **子题拆分增强**
+- [x] **子题拆分增强**
   - 支持 (1)(2)(3) 子题独立提取
   - 子题继承父题标签 + 独立标签
   
-- [ ] **答案/解析分离**
+- [x] **答案/解析分离**
   - 从试卷末尾的"参考答案"区域提取
   - 与题目按题号匹配关联
   
-- [ ] **扫描版 PDF OCR**
+- [x] **扫描版 PDF OCR**
   - 纯图片 PDF 的文本识别
   - 集成 Tesseract 或云端 OCR API
 
 ### Phase 4：前端界面（低优先级）
 
-- [ ] **Web 管理后台**
+- [x] **Web 管理后台**
   - 题目浏览与搜索
   - 标签编辑界面
   - 组卷可视化配置
   - 试卷预览与打印
 
-- [ ] **学生练习界面**
+- [x] **学生练习界面**
   - 按知识点/能力维度选题练习
   - 答题记录与错题本
   - 学习进度统计
@@ -321,21 +321,21 @@
 ## 验收标准
 
 ### 数据质量
-- [ ] 提取 100 份测试文件，无标签题目 < 5%
-- [ ] 每道题平均标签数 ≥ 4 个（跨维度）
-- [ ] 试卷元数据（district/school/round）准确率 ≥ 80%
-- [ ] 图片提取成功率 ≥ 90%
+- [x] 提取 100 份测试文件，无标签题目 < 5%
+- [x] 每道题平均标签数 ≥ 4 个（跨维度）
+- [x] 试卷元数据（district/school/round）准确率 ≥ 80%
+- [x] 图片提取成功率 ≥ 90%
 
 ### API 功能
-- [ ] `/api/query` 支持所有 5 个维度标签筛选
-- [ ] `/api/generate` 支持按模板 + 按规则两种组卷方式
-- [ ] `/api/analytics` 支持 heatmap/trend/position_dist/tag_tree/tag_dimension
-- [ ] `/api/html/:gen_id` 生成完整 A4 试卷，图片正常显示
+- [x] `/api/query` 支持所有 5 个维度标签筛选
+- [x] `/api/generate` 支持按模板 + 按规则两种组卷方式
+- [x] `/api/analytics` 支持 heatmap/trend/position_dist/tag_tree/tag_dimension
+- [x] `/api/html/:gen_id` 生成完整 A4 试卷，图片正常显示
 
 ### 性能
-- [ ] 单次查询响应 < 500ms（D1 冷启动除外）
-- [ ] 组卷生成 < 2s（50 题以内）
-- [ ] 统计分析结果缓存于 KV，TTL 86400
+- [x] 单次查询响应 < 500ms（D1 冷启动除外）
+- [x] 组卷生成 < 2s（50 题以内）
+- [x] 统计分析结果缓存于 KV，TTL 86400
 
 ---
 
