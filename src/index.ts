@@ -1,4 +1,4 @@
-import { Env, buildQuerySQL, simplifyQuestion, getQuestionDetail, getTagTree, saveGenerated, getGenerated } from "./db";
+import { Env, buildQuerySQL, simplifyQuestion, getQuestionDetail, getTagTree, saveGenerated, getGenerated, fullTextSearch, getSimilarQuestions, suggestTags } from "./db";
 import { generateExamHTML } from "./html";
 
 // ===== 安全中间件 =====
@@ -269,6 +269,96 @@ async function handleHTML(req: Request, env: Env): Promise<Response> {
   });
 }
 
+// 5. POST /api/search — 全文搜索
+async function handleSearch(req: Request, env: Env): Promise<Response> {
+  const body = await req.json();
+  const { query, subject, q_type, difficulty, limit = 20 } = body;
+
+  if (!query || typeof query !== "string" || query.trim().length === 0) {
+    return jsonResponse({ error: "Missing or empty query" }, 400);
+  }
+
+  const results = await fullTextSearch(env.DB, query, {
+    subject,
+    q_type,
+    difficulty,
+    limit: Math.min(limit, 50),
+  });
+
+  return jsonResponse({
+    query: query.trim(),
+    count: results.length,
+    questions: results.map(simplifyQuestion),
+  });
+}
+
+// 6. GET /api/similar/:question_id — 相似题目推荐
+async function handleSimilar(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  const questionId = url.pathname.split("/").pop() || "";
+  if (!questionId) return jsonResponse({ error: "Missing question_id" }, 400);
+
+  const limit = parseInt(url.searchParams.get("limit") || "5");
+  const results = await getSimilarQuestions(env.DB, questionId, Math.min(limit, 20));
+
+  return jsonResponse({
+    question_id: questionId,
+    count: results.length,
+    questions: results.map(simplifyQuestion),
+  });
+}
+
+// 7. GET /api/paper/:paper_id — 试卷详情
+async function handlePaper(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  const paperId = url.pathname.split("/").pop() || "";
+  if (!paperId) return jsonResponse({ error: "Missing paper_id" }, 400);
+
+  const paper = await env.DB.prepare("SELECT * FROM papers WHERE paper_id = ?").bind(paperId).first();
+  if (!paper) return jsonResponse({ error: "Paper not found" }, 404);
+
+  const questions = await env.DB.prepare(
+    `SELECT question_id, question_number, q_type, position, score, difficulty, content, tags, images, knowledge_tags, ability_tags, feature_tags, method_tags, position_tag
+     FROM questions WHERE paper_id = ? ORDER BY CAST(question_number AS INTEGER)`
+  ).bind(paperId).all();
+
+  return jsonResponse({
+    paper,
+    question_count: questions.results?.length || 0,
+    questions: (questions.results || []).map((q: any) => ({
+      ...q,
+      tags: q.tags ? JSON.parse(q.tags) : [],
+      images: q.images ? JSON.parse(q.images) : [],
+      knowledge_tags: q.knowledge_tags ? JSON.parse(q.knowledge_tags) : [],
+      ability_tags: q.ability_tags ? JSON.parse(q.ability_tags) : [],
+      feature_tags: q.feature_tags ? JSON.parse(q.feature_tags) : [],
+      method_tags: q.method_tags ? JSON.parse(q.method_tags) : [],
+    })),
+  });
+}
+
+// 8. GET /api/tags/suggest — 标签自动补全
+async function handleTagSuggest(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  const subject = url.searchParams.get("subject");
+  const prefix = url.searchParams.get("prefix");
+  const dimension = url.searchParams.get("dimension") || "knowledge";
+  const limit = parseInt(url.searchParams.get("limit") || "10");
+
+  if (!subject) return jsonResponse({ error: "Missing subject" }, 400);
+  if (!prefix || prefix.length < 1) return jsonResponse({ error: "Missing prefix (min 1 char)" }, 400);
+
+  const suggestions = await suggestTags(env.DB, subject, prefix, dimension, Math.min(limit, 20));
+
+  return jsonResponse({
+    subject,
+    prefix,
+    dimension,
+    count: suggestions.length,
+    suggestions,
+  });
+}
+
 // ===== 主入口 =====
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -290,6 +380,18 @@ export default {
       }
       if (path.startsWith("/api/html/") && req.method === "GET") {
         return await handleHTML(req, env);
+      }
+      if (path === "/api/search" && req.method === "POST") {
+        return await handleSearch(req, env);
+      }
+      if (path.startsWith("/api/similar/") && req.method === "GET") {
+        return await handleSimilar(req, env);
+      }
+      if (path.startsWith("/api/paper/") && req.method === "GET") {
+        return await handlePaper(req, env);
+      }
+      if (path === "/api/tags/suggest" && req.method === "GET") {
+        return await handleTagSuggest(req, env);
       }
       if (path === "/api/tags" && req.method === "GET") {
         const subject = url.searchParams.get("subject");

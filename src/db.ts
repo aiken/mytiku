@@ -179,3 +179,126 @@ export async function getGenerated(db: D1Database, gen_id: string): Promise<any 
   if (!row) return null;
   return { ...row, question_ids: row.question_ids ? JSON.parse(row.question_ids) : [] };
 }
+
+// 全文搜索（基于内容 LIKE 匹配 + 标签筛选）
+export async function fullTextSearch(db: D1Database, query: string, filters: any): Promise<any[]> {
+  const keywords = query.trim().split(/\s+/).filter(k => k.length >= 2);
+  if (keywords.length === 0) return [];
+
+  let sql = `SELECT q.question_id, q.question_number, q.paper_id, q.q_type, q.position, q.score, q.difficulty, q.content, q.tags, q.images, q.knowledge_tags, q.ability_tags, q.feature_tags, q.method_tags, q.position_tag, p.region, p.exam_type, p.year, p.subject, p.title as paper_title
+             FROM questions q
+             JOIN papers p ON q.paper_id = p.paper_id
+             WHERE 1=1`;
+  const params: any[] = [];
+
+  // 关键词匹配（内容或标签）
+  for (const kw of keywords) {
+    sql += ` AND (q.content LIKE ? OR q.knowledge_tags LIKE ? OR q.ability_tags LIKE ? OR q.feature_tags LIKE ?)`;
+    const pattern = `%${kw}%`;
+    params.push(pattern, pattern, pattern, pattern);
+  }
+
+  // 附加筛选
+  if (filters.subject) {
+    sql += " AND p.subject = ?";
+    params.push(filters.subject);
+  }
+  if (filters.q_type?.length) {
+    sql += ` AND q.q_type IN (${filters.q_type.map(() => "?").join(",")})`;
+    params.push(...filters.q_type);
+  }
+  if (filters.difficulty?.length === 2) {
+    sql += " AND q.difficulty BETWEEN ? AND ?";
+    params.push(filters.difficulty[0], filters.difficulty[1]);
+  }
+
+  sql += " ORDER BY q.difficulty DESC, RANDOM()";
+  const limit = Math.min(filters.limit || 20, 50);
+  sql += " LIMIT ?";
+  params.push(limit);
+
+  const result = await db.prepare(sql).bind(...params).all();
+  return result.results as any[];
+}
+
+// 相似题目推荐（基于同试卷同知识点）
+export async function getSimilarQuestions(db: D1Database, question_id: string, limit: number = 5): Promise<any[]> {
+  // 获取源题信息
+  const source = await db.prepare(
+    `SELECT q.*, p.subject FROM questions q JOIN papers p ON q.paper_id = p.paper_id WHERE q.question_id = ?`
+  ).bind(question_id).first();
+  if (!source) return [];
+
+  const subject = source.subject as string;
+  const knowledgeTags = source.knowledge_tags ? JSON.parse(source.knowledge_tags as string) : [];
+  const qType = source.q_type as string;
+  const paperId = source.paper_id as string;
+
+  // 构建相似度查询：同知识点 + 同题型 + 不同试卷
+  let sql = `SELECT q.question_id, q.question_number, q.paper_id, q.q_type, q.position, q.score, q.difficulty, q.content, q.tags, q.images, q.knowledge_tags, p.region, p.exam_type, p.year, p.subject
+             FROM questions q
+             JOIN papers p ON q.paper_id = p.paper_id
+             WHERE q.question_id != ? AND p.subject = ? AND q.q_type = ? AND q.paper_id != ?`;
+  const params: any[] = [question_id, subject, qType, paperId];
+
+  // 知识点匹配（至少一个相同）
+  if (knowledgeTags.length > 0) {
+    const conditions = knowledgeTags.map(() => "q.knowledge_tags LIKE ?").join(" OR ");
+    sql += ` AND (${conditions})`;
+    for (const tag of knowledgeTags) {
+      params.push(`%"${tag}"%`);
+    }
+  }
+
+  sql += " ORDER BY RANDOM() LIMIT ?";
+  params.push(Math.min(limit, 20));
+
+  const result = await db.prepare(sql).bind(...params).all();
+  return result.results as any[];
+}
+
+// 标签自动补全
+export async function suggestTags(db: D1Database, subject: string, prefix: string, dimension: string = "knowledge", limit: number = 10): Promise<any[]> {
+  const dimColumn = {
+    "knowledge": "knowledge_tags",
+    "ability": "ability_tags",
+    "feature": "feature_tags",
+    "method": "method_tags",
+    "position": "position_tag",
+  }[dimension] || "knowledge_tags";
+
+  // 从 questions 表中提取标签并匹配前缀
+  const pattern = `%${prefix}%`;
+  const sql = `
+    SELECT ${dimColumn} as tag_value
+    FROM questions q
+    JOIN papers p ON q.paper_id = p.paper_id
+    WHERE p.subject = ? AND q.${dimColumn} LIKE ? AND q.${dimColumn} IS NOT NULL AND q.${dimColumn} != '[]'
+    LIMIT 100
+  `;
+
+  const result = await db.prepare(sql).bind(subject, pattern).all();
+
+  // 提取并去重标签
+  const tagSet = new Set<string>();
+  for (const row of (result.results || []) as any[]) {
+    const val = row.tag_value;
+    if (!val) continue;
+    try {
+      const tags = dimension === "position" ? [val] : JSON.parse(val);
+      if (Array.isArray(tags)) {
+        for (const t of tags) {
+          if (t && t.toLowerCase().includes(prefix.toLowerCase()) && t !== "未分类") {
+            tagSet.add(t);
+          }
+        }
+      }
+    } catch {
+      if (val && val.toLowerCase().includes(prefix.toLowerCase()) && val !== "未分类") {
+        tagSet.add(val);
+      }
+    }
+  }
+
+  return Array.from(tagSet).slice(0, limit).map(tag => ({ tag_name: tag, dimension }));
+}
