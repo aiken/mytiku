@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS papers (
 CREATE TABLE IF NOT EXISTS questions (
     question_id TEXT PRIMARY KEY,
     paper_id TEXT REFERENCES papers(paper_id),
+    parent_question_id TEXT REFERENCES questions(question_id),  -- 子题关联父题
     question_number TEXT NOT NULL,
     q_type TEXT CHECK(q_type IN ('choice','fill','calculation','proof','experiment','reading','comprehensive')),
     position TEXT CHECK(position IN ('basic','medium','comprehensive','advanced')),
@@ -191,14 +192,15 @@ class LocalDB:
             
             self.conn.execute("""
                 INSERT OR IGNORE INTO questions 
-                (question_id, paper_id, question_number, q_type, position, score, difficulty,
+                (question_id, paper_id, parent_question_id, question_number, q_type, position, score, difficulty,
                  content, options, answer, solution, tags, images, data_table, estimated_time,
                  knowledge_tags, ability_tags, feature_tags, method_tags, position_tag, source_tags,
                  tag_count, has_image, word_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 q.get("question_id"),
                 q.get("paper_id"),
+                q.get("parent_question_id"),
                 q.get("question_number", ""),
                 q.get("q_type", "comprehensive"),
                 q.get("position", "medium"),
@@ -521,11 +523,11 @@ class LocalDB:
         
         return (
             f"INSERT INTO questions ("
-            f"question_id, paper_id, question_number, q_type, position, score, difficulty, "
+            f"question_id, paper_id, parent_question_id, question_number, q_type, position, score, difficulty, "
             f"content, options, answer, solution, tags, images, data_table, estimated_time, "
             f"knowledge_tags, ability_tags, feature_tags, method_tags, position_tag"
             f") VALUES ("
-            f"{esc(q.get('question_id'))}, {esc(q.get('paper_id'))}, {esc(q.get('question_number'))}, "
+            f"{esc(q.get('question_id'))}, {esc(q.get('paper_id'))}, {esc(q.get('parent_question_id'))}, {esc(q.get('question_number'))}, "
             f"{esc(q.get('q_type'))}, {esc(q.get('position'))}, {q.get('score', 0)}, {q.get('difficulty', 2)}, "
             f"{esc(q.get('content'))}, {esc(q.get('options'))}, {esc(q.get('answer'))}, "
             f"{esc(q.get('solution'))}, {esc(q.get('tags'))}, {esc(q.get('images'))}, "

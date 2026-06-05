@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS papers (
 CREATE TABLE IF NOT EXISTS questions (
     question_id TEXT PRIMARY KEY,
     paper_id TEXT REFERENCES papers(paper_id),
+    parent_question_id TEXT REFERENCES questions(question_id),  -- 子题关联父题
     question_number TEXT NOT NULL,
     q_type TEXT CHECK(q_type IN ('choice','fill','calculation','proof','experiment','reading','comprehensive')),
     position TEXT CHECK(position IN ('basic','medium','comprehensive','advanced')),
