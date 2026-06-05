@@ -1018,7 +1018,7 @@ def extract_answers_from_text(text: str) -> Dict[str, Dict[str, str]]:
         return {}
 
     for q_num_str, q_text in splits:
-        # 提取答案
+        # 提取答案（优先【答案】标记）
         answer = None
         m = re.search(r'【答案】\s*([^\n【]+)', q_text)
         if m:
@@ -1027,33 +1027,69 @@ def extract_answers_from_text(text: str) -> Dict[str, Dict[str, str]]:
             m = re.search(r'答案[：:]\s*([^\n]+)', q_text)
             if m:
                 answer = m.group(1).strip()
-
+        
         # 提取解析（合并 【分析】+【详解】+【解析】+【点睛】）
         solution_parts = []
-
+        
         # 【分析】
         m = re.search(r'【分析】\s*(.+?)(?=【|$)', q_text, re.DOTALL)
         if m:
             solution_parts.append(f"【分析】{m.group(1).strip()}")
-
+        
         # 【详解】
         m = re.search(r'【详解】\s*(.+?)(?=【|$)', q_text, re.DOTALL)
+        detail_text = ""
         if m:
-            solution_parts.append(f"【详解】{m.group(1).strip()}")
-
+            detail_text = m.group(1).strip()
+            solution_parts.append(f"【详解】{detail_text}")
+        
         # 【解析】（如果上面没有，再单独取）
         if not solution_parts:
             m = re.search(r'【解析】\s*(.+?)(?=【|$)', q_text, re.DOTALL)
             if m:
-                solution_parts.append(f"【解析】{m.group(1).strip()}")
-
+                detail_text = m.group(1).strip()
+                solution_parts.append(f"【解析】{detail_text}")
+        
         # 【点睛】
         m = re.search(r'【点睛】\s*(.+?)(?=【|$)', q_text, re.DOTALL)
         if m:
             solution_parts.append(f"【点睛】{m.group(1).strip()}")
-
+        
         solution = "\n".join(solution_parts) if solution_parts else None
-
+        
+        # 如果无【答案】标记，从【详解】/【解析】中提取答案
+        if not answer and detail_text:
+            # 选择题: 匹配 "故选：X" / "故选X" / "选X" / "答案是X"
+            m = re.search(r'故选[：:]\s*([A-D])', detail_text)
+            if not m:
+                m = re.search(r'故选\s*([A-D])', detail_text)
+            if not m:
+                m = re.search(r'选\s*([A-D])[\.．、]?\s*$', detail_text, re.MULTILINE)
+            if not m:
+                m = re.search(r'答案[是为]\s*([A-D])', detail_text)
+            if m:
+                answer = m.group(1)
+            
+            # 填空题: 匹配 "故答案为：xxx" / "答案为xxx" / "是xxx"
+            if not answer:
+                m = re.search(r'故答案[是为][：:]\s*([^\n；。]+)', detail_text)
+                if not m:
+                    m = re.search(r'答案[是为][：:]\s*([^\n；。]+)', detail_text)
+                if not m:
+                    m = re.search(r'[是为][：:]\s*([^\n；。]{1,30})[。；]', detail_text)
+                if m:
+                    ans = m.group(1).strip()
+                    if len(ans) <= 50:  # 限制长度，避免提取整段解析
+                        answer = ans
+            
+            # 解答题: 提取最后一段作为答案摘要（如果较短）
+            if not answer:
+                lines = [l.strip() for l in detail_text.split('\n') if l.strip()]
+                if lines:
+                    last_line = lines[-1]
+                    if 1 <= len(last_line) <= 30:
+                        answer = last_line
+        
         if answer or solution:
             answer_map[str(q_num_str)] = {
                 "answer": answer or "",

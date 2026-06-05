@@ -49,26 +49,36 @@ MATH_KNOWLEDGE_RULES: List[Tuple[re.Pattern, List[str]]] = [
     (re.compile(r"二次函数|抛物线|y\s*=\s*ax[²2]|顶点.*坐标|对称轴|开口.*方向|最值"), ["二次函数", "函数"]),
     (re.compile(r"函数图像|图象|描点|列表|坐标系|x轴|y轴|原点"), ["函数图像", "函数"]),
     
-    # 几何 — 三角形
+    # 几何 — 三角形（增强）
     (re.compile(r"全等.*三角形|SSS|SAS|ASA|AAS|HL|全等判定|全等证明"), ["全等三角形", "三角形", "几何"]),
     (re.compile(r"相似.*三角形|相似比|位似|相似判定|AA|SAS相似|SSS相似"), ["相似三角形", "三角形", "几何"]),
     (re.compile(r"等腰.*三角形|等边.*三角形|直角.*三角形|勾股定理|勾股数"), ["特殊三角形", "三角形", "几何"]),
     (re.compile(r"三角形.*内角|外角|中线|高线|角平分线|中位线"), ["三角形性质", "三角形", "几何"]),
     (re.compile(r"解直角三角形|三角函数|sin|cos|tan|仰角|俯角|坡度"), ["解直角三角形", "三角形", "几何"]),
+    # 新增：基础三角形关键词
+    (re.compile(r"Rt△|∠C\s*=\s*90°|∠B\s*=\s*90°|∠A\s*=\s*90°"), ["特殊三角形", "三角形", "几何"]),
+    (re.compile(r"△[A-Z]{3}|三角形[ABC]"), ["三角形", "几何"]),
     
     # 几何 — 四边形
     (re.compile(r"平行四边形|矩形|菱形|正方形|梯形|对角线|中点四边形"), ["四边形", "几何"]),
     
-    # 几何 — 圆
+    # 几何 — 圆（增强基础匹配）
     (re.compile(r"圆[的O与].*切线|切线.*圆|切线长|切点"), ["圆的切线", "圆", "几何"]),
     (re.compile(r"圆周角|圆心角|弧长|扇形|垂径定理|弦.*直径"), ["圆的性质", "圆", "几何"]),
     (re.compile(r"圆内接|外接圆|内切圆|外切圆|四点共圆"), ["圆与多边形", "圆", "几何"]),
+    # 新增：基础圆关键词
+    (re.compile(r"直径|半径|圆心|圆弧|半圆|圆周|⊙[OABC]"), ["圆的性质", "圆", "几何"]),
+    (re.compile(r"扇形.*面积|弧长.*公式|圆锥.*侧面"), ["圆的性质", "圆", "几何"]),
     
     # 几何 — 其他
     (re.compile(r"尺规.*作图|作图.*保留.*痕迹|作图题"), ["尺规作图", "几何"]),
     (re.compile(r"多边形.*内角|外角和|正多边形|对角线"), ["多边形", "几何"]),
     (re.compile(r"平移|旋转|轴对称|中心对称|翻折|折叠"), ["图形变换", "几何"]),
     (re.compile(r"三视图|展开图|立体图形|正方体.*展开|圆柱.*圆锥"), ["立体几何", "几何"]),
+    # 新增：基础几何关键词
+    (re.compile(r"如图.*圆|图形.*圆|点.*圆|线.*圆"), ["圆", "几何"]),
+    (re.compile(r"如图.*三角形|图形.*三角形|Rt△"), ["三角形", "几何"]),
+    (re.compile(r"如图.*四边形|正方形|矩形|菱形"), ["四边形", "几何"]),
     
     # 统计概率
     (re.compile(r"统计.*方差|中位数.*众数|频数分布|数据分析|平均数|加权平均"), ["统计", "数据分析"]),
@@ -256,8 +266,29 @@ def auto_tag(content: str, subject: str, question_number: int = 0,
         if pattern.search(content):
             knowledge_tags.update(tags)
     
-    if not knowledge_tags:
-        knowledge_tags.add("未分类")
+    # 如果无知识点匹配，尝试基于内容关键词推断（避免"未分类"）
+    if not knowledge_tags or knowledge_tags == {"未分类"}:
+        # 基于图形关键词推断
+        if "如图" in content or "图形" in content:
+            if re.search(r"⊙|圆|半径|直径|圆弧|扇形", content):
+                knowledge_tags = {"圆", "几何"}
+            elif re.search(r"△|三角形|Rt△|∠", content):
+                knowledge_tags = {"三角形", "几何"}
+            elif re.search(r"正方形|矩形|菱形|平行四边形|梯形", content):
+                knowledge_tags = {"四边形", "几何"}
+            else:
+                knowledge_tags = {"基础几何", "几何"}
+        # 基于函数关键词推断
+        elif re.search(r"y\s*=|函数|抛物线|双曲线|坐标系|x轴|y轴", content):
+            knowledge_tags = {"函数", "函数图像"}
+        # 基于方程关键词推断
+        elif re.search(r"方程|解方程|不等式|解集", content):
+            knowledge_tags = {"方程不等式"}
+        # 基于统计关键词推断
+        elif re.search(r"概率|统计|平均数|方差|中位数|众数", content):
+            knowledge_tags = {"统计", "数据分析"}
+        else:
+            knowledge_tags.add("未分类")
     
     # 2. 能力维度标签
     ability_tags = set()
@@ -276,6 +307,32 @@ def auto_tag(content: str, subject: str, question_number: int = 0,
     for pattern, tags in METHOD_RULES:
         if pattern.search(content):
             method_tags.update(tags)
+    
+    # 如果方法标签为空，基于知识点推断常用方法
+    if not method_tags and knowledge_tags and knowledge_tags != {"未分类"}:
+        # 知识点 → 常用方法映射
+        knowledge_method_map = {
+            "圆": ["数形结合"],
+            "圆的性质": ["数形结合"],
+            "圆的切线": ["数形结合", "分类讨论"],
+            "二次函数": ["配方法", "数形结合"],
+            "一次函数": ["数形结合"],
+            "反比例函数": ["数形结合"],
+            "函数图像": ["数形结合"],
+            "存在性最值": ["分类讨论"],
+            "动态几何": ["分类讨论", "数形结合"],
+            "新定义": ["阅读理解"],
+            "方程不等式": ["方程思想"],
+            "一元二次方程": ["配方法", "公式法"],
+            "全等三角形": ["构造法"],
+            "相似三角形": ["构造法"],
+            "解直角三角形": ["数形结合"],
+            "统计": ["数据分析"],
+            "概率": ["列举法"],
+        }
+        for kw_tag in knowledge_tags:
+            if kw_tag in knowledge_method_map:
+                method_tags.update(knowledge_method_map[kw_tag])
     
     # 5. 考试定位标签
     position_tag = infer_position_tag(question_number, difficulty, q_type)
