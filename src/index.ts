@@ -94,6 +94,12 @@ async function handleGenerate(req: Request, env: Env): Promise<Response> {
       region: rule.region,
       exam_type: rule.exam_type,
       year: rule.year,
+      // 多维度标签支持（v3 新增）
+      knowledge_tags: rule.knowledge_tags,
+      ability_tags: rule.ability_tags,
+      feature_tags: rule.feature_tags,
+      method_tags: rule.method_tags,
+      position_tag: rule.position_tag,
       limit: rule.count || 5
     });
     const result = await env.DB.prepare(sql).bind(...params).all();
@@ -491,7 +497,9 @@ export default {
 
       return jsonResponse({ error: "Not Found", path }, 404);
     } catch (err: any) {
-      return jsonResponse({ error: err.message || "Internal Error", stack: err.stack }, 500);
+      // 生产环境不返回堆栈信息，避免泄露敏感细节
+      console.error("[API Error]", err);
+      return jsonResponse({ error: err.message || "Internal Error" }, 500);
     }
   }
 };

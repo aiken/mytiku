@@ -298,11 +298,17 @@ function renderQuestions(questions) {
 }
 
 function renderMath(element) {
-  if (typeof katex !== 'undefined') {
-    const text = element.textContent;
-    // 简单替换 $...$ 为 KaTeX 渲染
-    // 实际项目中应使用更完善的 Markdown+KaTeX 渲染
-  }
+  if (typeof katex === 'undefined' || !element) return;
+  // 查找 $...$ 格式的公式并渲染为 KaTeX
+  let html = element.innerHTML;
+  html = html.replace(/\$([^$]+)\$/g, (match, expr) => {
+    try {
+      return katex.renderToString(expr, { throwOnError: false });
+    } catch (e) {
+      return match;
+    }
+  });
+  element.innerHTML = html;
 }
 
 function escapeHtml(text) {
