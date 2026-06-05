@@ -10,229 +10,645 @@
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   .math-content { font-size: 1.1em; }
-  .option-btn { @apply w-full text-left px-4 py-3 rounded-lg border-2 transition-all; }
-  .option-btn:hover { @apply border-blue-400 bg-blue-50; }
-  .option-btn.selected { @apply border-blue-600 bg-blue-100; }
-  .option-btn.correct { @apply border-green-500 bg-green-100; }
-  .option-btn.wrong { @apply border-red-500 bg-red-100; }
+  .tag-pill { @apply px-2 py-1 rounded-full text-xs font-medium; }
+  .card { @apply bg-white rounded-xl shadow-sm border border-gray-100; }
+  .btn-primary { @apply px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors; }
+  .btn-secondary { @apply px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors; }
+  .btn-danger { @apply px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors; }
+  .stat-card { @apply card p-4 flex flex-col items-center justify-center; }
+  .choice-option { @apply w-full text-left px-4 py-3 rounded-lg border-2 border-gray-200 hover:border-blue-300 transition-colors cursor-pointer; }
+  .choice-option.selected { @apply border-blue-500 bg-blue-50; }
+  .choice-option.correct { @apply border-green-500 bg-green-50; }
+  .choice-option.wrong { @apply border-red-500 bg-red-50; }
+  .fill-input { @apply w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none; }
+  .progress-bar { @apply h-2 bg-gray-200 rounded-full overflow-hidden; }
+  .progress-fill { @apply h-full bg-blue-500 rounded-full transition-all duration-500; }
+  .dimension-card { @apply card p-5 cursor-pointer hover:shadow-md transition-shadow; }
+  .dimension-card:hover { @apply border-blue-200; }
+  .dimension-icon { @apply w-12 h-12 rounded-xl flex items-center justify-center text-2xl mb-3; }
+  @media (max-width: 640px) {
+    .practice-layout { flex-direction: column; }
+  }
 </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
 
 <!-- 导航栏 -->
-<nav class="bg-slate-800 text-white shadow-lg">
+<nav class="bg-white border-b border-gray-200 sticky top-0 z-50">
   <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-4">
-      <h1 class="text-xl font-bold">✏️ MyTiku 练习</h1>
-      <span class="text-sm text-slate-400">中考数学/物理</span>
-    </div>
     <div class="flex items-center gap-3">
-      <input id="apiKey" type="password" placeholder="API Key" class="px-3 py-1 rounded bg-slate-700 text-sm border border-slate-600 focus:outline-none focus:border-blue-400" value="">
-      <button onclick="saveApiKey()" class="px-3 py-1 bg-blue-600 rounded text-sm hover:bg-blue-700">保存</button>
+      <h1 class="text-lg font-bold text-slate-800">📝 MyTiku 练习</h1>
+    </div>
+    <div class="flex items-center gap-2">
+      <input id="apiKey" type="password" placeholder="API Key" class="px-3 py-1.5 border rounded-lg text-sm w-32 focus:outline-none focus:border-blue-400">
+      <button onclick="saveApiKey()" class="px-3 py-1.5 bg-slate-800 text-white rounded-lg text-sm hover:bg-slate-700">保存</button>
     </div>
   </div>
 </nav>
 
+<!-- 底部导航（移动端） -->
+<nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 md:hidden">
+  <div class="flex justify-around py-2">
+    <button onclick="navigate('home')" class="flex flex-col items-center gap-0.5 text-xs text-gray-500" id="nav-home">
+      <span class="text-lg">🏠</span>首页
+    </button>
+    <button onclick="navigate('practice')" class="flex flex-col items-center gap-0.5 text-xs text-gray-500" id="nav-practice">
+      <span class="text-lg">✏️</span>练习
+    </button>
+    <button onclick="navigate('wrong')" class="flex flex-col items-center gap-0.5 text-xs text-gray-500" id="nav-wrong">
+      <span class="text-lg">📕</span>错题
+    </button>
+    <button onclick="navigate('stats')" class="flex flex-col items-center gap-0.5 text-xs text-gray-500" id="nav-stats">
+      <span class="text-lg">📊</span>统计
+    </button>
+  </div>
+</nav>
+
 <!-- 主内容区 -->
-<div class="max-w-4xl mx-auto px-4 py-6">
-  
-  <!-- 标签页切换 -->
-  <div class="flex gap-2 mb-6 border-b border-gray-200">
-    <button onclick="switchTab('practice')" id="tab-practice" class="px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600">开始练习</button>
-    <button onclick="switchTab('wrong')" id="tab-wrong" class="px-4 py-2 font-medium text-gray-500 hover:text-gray-700">错题本 <span id="wrong-count" class="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">0</span></button>
-    <button onclick="switchTab('stats')" id="tab-stats" class="px-4 py-2 font-medium text-gray-500 hover:text-gray-700">学习统计</button>
-  </div>
+<main class="max-w-4xl mx-auto px-4 py-6 pb-24 md:pb-6">
 
-  <!-- 练习页 -->
-  <div id="page-practice" class="space-y-4">
-    <!-- 练习配置 -->
-    <div id="practice-config" class="bg-white rounded-lg shadow p-6">
-      <h2 class="text-lg font-bold mb-4">⚙️ 练习配置</h2>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-        <div>
-          <label class="block text-sm font-medium mb-1">学科</label>
-          <select id="practice-subject" class="w-full px-3 py-2 border rounded-lg">
-            <option value="math">数学</option>
-            <option value="physics">物理</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium mb-1">练习模式</label>
-          <select id="practice-mode" class="w-full px-3 py-2 border rounded-lg">
-            <option value="random">随机练习</option>
-            <option value="knowledge">专项突破</option>
-            <option value="wrong">错题复习</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium mb-1">题目数量</label>
-          <select id="practice-count" class="w-full px-3 py-2 border rounded-lg">
-            <option value="5">5 题</option>
-            <option value="10" selected>10 题</option>
-            <option value="20">20 题</option>
-            <option value="30">30 题</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium mb-1">难度</label>
-          <select id="practice-difficulty" class="w-full px-3 py-2 border rounded-lg">
-            <option value="">全部</option>
-            <option value="1,2">简单</option>
-            <option value="3">中等</option>
-            <option value="4,5">困难</option>
-          </select>
-        </div>
-      </div>
-      
-      <!-- 专项突破标签选择 -->
-      <div id="knowledge-select" class="hidden mb-4">
-        <label class="block text-sm font-medium mb-1">选择知识点</label>
-        <div id="knowledge-tags" class="flex flex-wrap gap-2">
-          <span class="text-gray-400 text-sm">加载中...</span>
-        </div>
-      </div>
-      
-      <button onclick="startPractice()" class="w-full py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">🚀 开始练习</button>
-    </div>
-
-    <!-- 答题区 -->
-    <div id="practice-area" class="hidden space-y-4">
-      <!-- 进度条 -->
-      <div class="bg-white rounded-lg shadow p-4">
-        <div class="flex justify-between items-center mb-2">
-          <span class="text-sm font-medium">进度</span>
-          <span id="progress-text" class="text-sm text-gray-500">1 / 10</span>
-        </div>
-        <div class="w-full bg-gray-200 rounded-full h-2">
-          <div id="progress-bar" class="bg-green-600 h-2 rounded-full transition-all" style="width: 10%"></div>
-        </div>
-      </div>
-
-      <!-- 题目卡片 -->
-      <div id="question-card" class="bg-white rounded-lg shadow p-6">
-        <div class="flex justify-between items-start mb-4">
-          <div class="flex items-center gap-2">
-            <span id="q-number" class="text-lg font-bold text-slate-700">#1</span>
-            <span id="q-type" class="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">选择题</span>
-            <span id="q-difficulty" class="text-xs text-gray-400">★★★</span>
-          </div>
-          <span id="q-score" class="text-sm text-gray-500">3分</span>
-        </div>
-        
-        <div id="q-content" class="math-content text-gray-800 mb-6 text-lg leading-relaxed"></div>
-        
-        <!-- 选项区（选择题） -->
-        <div id="q-options" class="space-y-2 mb-6"></div>
-        
-        <!-- 填空题输入 -->
-        <div id="q-fill-input" class="hidden mb-6">
-          <input type="text" id="fill-answer" placeholder="输入答案..." class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none">
-        </div>
-        
-        <!-- 解答题输入 -->
-        <div id="q-calc-input" class="hidden mb-6">
-          <textarea id="calc-answer" placeholder="写出解答过程..." rows="4" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"></textarea>
-        </div>
-        
-        <!-- 操作按钮 -->
-        <div class="flex gap-3">
-          <button id="btn-submit" onclick="submitAnswer()" class="flex-1 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">提交答案</button>
-          <button id="btn-next" onclick="nextQuestion()" class="hidden flex-1 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700">下一题 →</button>
-          <button id="btn-skip" onclick="skipQuestion()" class="px-4 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">跳过</button>
-        </div>
-        
-        <!-- 答案解析 -->
-        <div id="answer-feedback" class="hidden mt-4 p-4 rounded-lg"></div>
+  <!-- ========== 首页 ========== -->
+  <div id="page-home" class="space-y-6">
+    <!-- 欢迎区 -->
+    <div class="card p-6">
+      <h2 class="text-xl font-bold text-slate-800 mb-2">欢迎练习 👋</h2>
+      <p class="text-gray-600 text-sm mb-4">选择练习维度，系统将从题库中智能推荐题目。</p>
+      <div class="flex gap-3 flex-wrap">
+        <button onclick="startPractice('random')" class="btn-primary">🎲 随机练习</button>
+        <button onclick="startPractice('weak')" class="btn-secondary">🎯 专项突破</button>
       </div>
     </div>
 
-    <!-- 练习结果 -->
-    <div id="practice-result" class="hidden bg-white rounded-lg shadow p-6 text-center">
-      <h2 class="text-2xl font-bold mb-4">🎉 练习完成!</h2>
-      <div class="grid grid-cols-3 gap-4 mb-6">
-        <div class="bg-blue-50 rounded-lg p-4">
-          <div id="result-total" class="text-3xl font-bold text-blue-600">10</div>
-          <div class="text-sm text-gray-600">总题数</div>
+    <!-- 今日统计 -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="stat-card">
+        <span class="text-2xl font-bold text-blue-600" id="stat-today-count">0</span>
+        <span class="text-xs text-gray-500 mt-1">今日做题</span>
+      </div>
+      <div class="stat-card">
+        <span class="text-2xl font-bold text-green-600" id="stat-today-correct">0%</span>
+        <span class="text-xs text-gray-500 mt-1">正确率</span>
+      </div>
+      <div class="stat-card">
+        <span class="text-2xl font-bold text-red-600" id="stat-wrong-count">0</span>
+        <span class="text-xs text-gray-500 mt-1">错题本</span>
+      </div>
+      <div class="stat-card">
+        <span class="text-2xl font-bold text-purple-600" id="stat-streak">0</span>
+        <span class="text-xs text-gray-500 mt-1">连续正确</span>
+      </div>
+    </div>
+
+    <!-- 维度选择 -->
+    <div>
+      <h3 class="text-sm font-bold text-gray-700 mb-3">按维度练习</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="dimension-card" onclick="selectDimension('knowledge')">
+          <div class="dimension-icon bg-blue-100">📚</div>
+          <h4 class="font-bold text-slate-800">知识点</h4>
+          <p class="text-xs text-gray-500 mt-1">按章节/概念筛选：几何、函数、电学、力学...</p>
         </div>
-        <div class="bg-green-50 rounded-lg p-4">
-          <div id="result-correct" class="text-3xl font-bold text-green-600">8</div>
-          <div class="text-sm text-gray-600">正确</div>
+        <div class="dimension-card" onclick="selectDimension('ability')">
+          <div class="dimension-icon bg-green-100">🧠</div>
+          <h4 class="font-bold text-slate-800">能力维度</h4>
+          <p class="text-xs text-gray-500 mt-1">按能力训练：计算、推理、空间想象、实验设计...</p>
         </div>
-        <div class="bg-red-50 rounded-lg p-4">
-          <div id="result-wrong" class="text-3xl font-bold text-red-600">2</div>
-          <div class="text-sm text-gray-600">错误</div>
+        <div class="dimension-card" onclick="selectDimension('feature')">
+          <div class="dimension-icon bg-purple-100">🔍</div>
+          <h4 class="font-bold text-slate-800">题型特征</h4>
+          <p class="text-xs text-gray-500 mt-1">按形式筛选：含图表、多步骤、实际情境...</p>
+        </div>
+        <div class="dimension-card" onclick="selectDimension('method')">
+          <div class="dimension-icon bg-orange-100">⚡</div>
+          <h4 class="font-bold text-slate-800">解题方法</h4>
+          <p class="text-xs text-gray-500 mt-1">按方法训练：数形结合、分类讨论、构造法...</p>
         </div>
       </div>
-      <div id="result-accuracy" class="text-xl font-medium mb-6">正确率: 80%</div>
-      <button onclick="resetPractice()" class="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">再来一组</button>
+    </div>
+
+    <!-- 学科选择 -->
+    <div>
+      <h3 class="text-sm font-bold text-gray-700 mb-3">学科</h3>
+      <div class="flex gap-3">
+        <button onclick="setSubject('math')" id="btn-subject-math" class="px-4 py-2 rounded-lg border-2 border-blue-500 bg-blue-50 text-blue-700 text-sm font-medium">数学</button>
+        <button onclick="setSubject('physics')" id="btn-subject-physics" class="px-4 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm font-medium hover:border-gray-300">物理</button>
+      </div>
     </div>
   </div>
 
-  <!-- 错题本页 -->
+  <!-- ========== 维度选择页 ========== -->
+  <div id="page-dimension" class="hidden space-y-4">
+    <div class="flex items-center gap-2 mb-4">
+      <button onclick="navigate('home')" class="text-gray-500 hover:text-gray-700">← 返回</button>
+      <h2 class="text-lg font-bold" id="dimension-title">选择知识点</h2>
+    </div>
+    <div id="dimension-tags" class="grid grid-cols-2 md:grid-cols-3 gap-2">
+      <!-- 动态填充 -->
+    </div>
+  </div>
+
+  <!-- ========== 练习页 ========== -->
+  <div id="page-practice" class="hidden">
+    <!-- 进度条 -->
+    <div class="mb-4">
+      <div class="flex justify-between text-xs text-gray-500 mb-1">
+        <span id="practice-progress-text">第 1 / 10 题</span>
+        <span id="practice-timer">⏱️ 00:00</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="practice-progress-bar" style="width: 10%"></div>
+      </div>
+    </div>
+
+    <!-- 题目卡片 -->
+    <div class="card p-5 md:p-6 mb-4">
+      <!-- 题目标签 -->
+      <div class="flex flex-wrap gap-1.5 mb-3" id="question-tags">
+        <!-- 动态填充 -->
+      </div>
+
+      <!-- 题目内容 -->
+      <div class="math-content text-gray-800 mb-4 leading-relaxed" id="question-content">
+        加载中...
+      </div>
+
+      <!-- 图片 -->
+      <div id="question-images" class="mb-4 space-y-2"></div>
+
+      <!-- 答题区 -->
+      <div id="answer-area" class="space-y-3">
+        <!-- 动态填充：选择题/填空题/解答题 -->
+      </div>
+
+      <!-- 结果反馈 -->
+      <div id="answer-feedback" class="hidden mt-4 p-4 rounded-lg"></div>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div class="flex justify-between items-center">
+      <button onclick="skipQuestion()" class="btn-secondary">⏭️ 跳过</button>
+      <div class="flex gap-2">
+        <button onclick="showAnswer()" id="btn-show-answer" class="btn-secondary hidden">👁️ 看答案</button>
+        <button onclick="submitAnswer()" id="btn-submit" class="btn-primary">✅ 提交</button>
+        <button onclick="nextQuestion()" id="btn-next" class="btn-primary hidden">下一题 →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 错题本 ========== -->
   <div id="page-wrong" class="hidden space-y-4">
-    <div class="bg-white rounded-lg shadow p-4">
-      <h2 class="text-lg font-bold mb-2">❌ 错题本</h2>
-      <p class="text-sm text-gray-500">自动收录答错的题目，支持反复复习</p>
-    </div>
+    <h2 class="text-lg font-bold text-slate-800">📕 错题本</h2>
     <div id="wrong-list" class="space-y-3">
-      <div class="text-center py-12 text-gray-400">暂无错题，开始练习吧!</div>
+      <div class="text-center py-12 text-gray-400">暂无错题，快去练习吧！</div>
     </div>
   </div>
 
-  <!-- 学习统计页 -->
-  <div id="page-stats" class="hidden space-y-4">
-    <div class="bg-white rounded-lg shadow p-6">
-      <h2 class="text-lg font-bold mb-4">📊 学习统计</h2>
-      
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div class="bg-blue-50 rounded-lg p-4 text-center">
-          <div id="stat-total" class="text-2xl font-bold text-blue-600">0</div>
-          <div class="text-sm text-gray-600">总练习数</div>
-        </div>
-        <div class="bg-green-50 rounded-lg p-4 text-center">
-          <div id="stat-correct" class="text-2xl font-bold text-green-600">0</div>
-          <div class="text-sm text-gray-600">正确数</div>
-        </div>
-        <div class="bg-red-50 rounded-lg p-4 text-center">
-          <div id="stat-wrong" class="text-2xl font-bold text-red-600">0</div>
-          <div class="text-sm text-gray-600">错题数</div>
-        </div>
-        <div class="bg-purple-50 rounded-lg p-4 text-center">
-          <div id="stat-accuracy" class="text-2xl font-bold text-purple-600">0%</div>
-          <div class="text-sm text-gray-600">正确率</div>
-        </div>
+  <!-- ========== 统计页 ========== -->
+  <div id="page-stats" class="hidden space-y-6">
+    <h2 class="text-lg font-bold text-slate-800">📊 学习统计</h2>
+
+    <!-- 总览 -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="stat-card">
+        <span class="text-2xl font-bold text-blue-600" id="stat-total-count">0</span>
+        <span class="text-xs text-gray-500 mt-1">总做题数</span>
       </div>
-      
-      <h3 class="font-medium mb-2">各知识点正确率</h3>
-      <div id="knowledge-stats" class="space-y-2">
-        <div class="text-gray-400 text-sm">暂无数据，开始练习后自动统计</div>
+      <div class="stat-card">
+        <span class="text-2xl font-bold text-green-600" id="stat-total-correct">0%</span>
+        <span class="text-xs text-gray-500 mt-1">总正确率</span>
+      </div>
+      <div class="stat-card">
+        <span class="text-2xl font-bold text-red-600" id="stat-total-wrong">0</span>
+        <span class="text-xs text-gray-500 mt-1">总错题数</span>
+      </div>
+      <div class="stat-card">
+        <span class="text-2xl font-bold text-purple-600" id="stat-total-time">0</span>
+        <span class="text-xs text-gray-500 mt-1">练习时长(分)</span>
+      </div>
+    </div>
+
+    <!-- 维度正确率 -->
+    <div class="card p-5">
+      <h3 class="font-bold text-slate-800 mb-4">各维度正确率</h3>
+      <div id="dimension-stats" class="space-y-3">
+        <!-- 动态填充 -->
+      </div>
+    </div>
+
+    <!-- 最近练习 -->
+    <div class="card p-5">
+      <h3 class="font-bold text-slate-800 mb-4">最近练习</h3>
+      <div id="recent-sessions" class="space-y-2 text-sm">
+        <!-- 动态填充 -->
       </div>
     </div>
   </div>
 
-</div>
+</main>
 
 <script>
 // ==================== 配置 ====================
-const API_BASE = '';
-let API_KEY = localStorage.getItem('mytiku_api_key') || '';
+const API_BASE = ''; // 同域部署，留空
+let apiKey = localStorage.getItem('mytiku_api_key') || '';
+if (apiKey) document.getElementById('apiKey').value = apiKey;
 
-document.getElementById('apiKey').value = API_KEY;
+let currentSubject = localStorage.getItem('mytiku_subject') || 'math';
+let currentDimension = null;
+let currentTag = null;
+let practiceQuestions = [];
+let currentQuestionIndex = 0;
+let currentAnswer = null;
+let practiceStartTime = null;
+let timerInterval = null;
+let sessionStats = { correct: 0, wrong: 0, skipped: 0 };
 
-function saveApiKey() {
-  API_KEY = document.getElementById('apiKey').value;
-  localStorage.setItem('mytiku_api_key', API_KEY);
-  alert('API Key 已保存');
+// 预定义标签（从题库常用标签中提取）
+const PREDEFINED_TAGS = {
+  knowledge: {
+    math: ['几何', '函数', '方程不等式', '数与式', '统计概率', '圆', '三角形', '四边形', '二次函数', '一次函数', '反比例函数', '相似', '全等', '动点问题', '新定义'],
+    physics: ['电学', '力学', '光学', '热学', '浮力', '压强', '欧姆定律', '电功率', '凸透镜成像', '功和功率', '密度', '电路分析', '电磁', '家庭电路']
+  },
+  ability: ['计算能力', '逻辑推理', '空间想象', '阅读理解', '实验设计', '数据分析', '建模能力', '归纳抽象', '分类讨论'],
+  feature: ['含图表', '多步骤', '实际情境', '单选题', '解答题', '综合题', '压轴题', '基础题', '中档题'],
+  method: ['数形结合', '分类讨论', '构造法', '方程思想', '转化化归', '特殊值法', '归纳法', '对称法', '面积法']
+};
+
+// ==================== 导航 ====================
+function navigate(page) {
+  ['home', 'dimension', 'practice', 'wrong', 'stats'].forEach(p => {
+    document.getElementById(`page-${p}`)?.classList.add('hidden');
+  });
+  document.getElementById(`page-${page}`)?.classList.remove('hidden');
+
+  // 更新底部导航高亮
+  document.querySelectorAll('[id^="nav-"]').forEach(el => {
+    el.classList.remove('text-blue-600');
+    el.classList.add('text-gray-500');
+  });
+  const navEl = document.getElementById(`nav-${page}`);
+  if (navEl) {
+    navEl.classList.remove('text-gray-500');
+    navEl.classList.add('text-blue-600');
+  }
+
+  if (page === 'stats') renderStats();
+  if (page === 'wrong') renderWrongBook();
+  if (page === 'home') updateHomeStats();
 }
 
+// ==================== API 工具 ====================
 function apiHeaders() {
   return {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${API_KEY}`
+    'Authorization': `Bearer ${apiKey}`
   };
 }
 
-// ==================== 数据存储 ====================
+function saveApiKey() {
+  apiKey = document.getElementById('apiKey').value.trim();
+  localStorage.setItem('mytiku_api_key', apiKey);
+  alert('API Key 已保存');
+}
+
+function setSubject(subject) {
+  currentSubject = subject;
+  localStorage.setItem('mytiku_subject', subject);
+  document.getElementById('btn-subject-math').className = subject === 'math'
+    ? 'px-4 py-2 rounded-lg border-2 border-blue-500 bg-blue-50 text-blue-700 text-sm font-medium'
+    : 'px-4 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm font-medium hover:border-gray-300';
+  document.getElementById('btn-subject-physics').className = subject === 'physics'
+    ? 'px-4 py-2 rounded-lg border-2 border-blue-500 bg-blue-50 text-blue-700 text-sm font-medium'
+    : 'px-4 py-2 rounded-lg border-2 border-gray-200 text-gray-600 text-sm font-medium hover:border-gray-300';
+}
+
+// ==================== 首页 ====================
+function updateHomeStats() {
+  const records = getRecords();
+  const today = new Date().toDateString();
+  const todayRecords = records.filter(r => new Date(r.timestamp).toDateString() === today);
+
+  document.getElementById('stat-today-count').textContent = todayRecords.length;
+  const todayCorrect = todayRecords.filter(r => r.is_correct).length;
+  const todayRate = todayRecords.length > 0 ? Math.round(todayCorrect / todayRecords.length * 100) : 0;
+  document.getElementById('stat-today-correct').textContent = todayRate + '%';
+
+  const wrongBook = getWrongBook();
+  document.getElementById('stat-wrong-count').textContent = wrongBook.length;
+
+  // 连续正确
+  let streak = 0;
+  for (let i = records.length - 1; i >= 0; i--) {
+    if (records[i].is_correct) streak++;
+    else break;
+  }
+  document.getElementById('stat-streak').textContent = streak;
+}
+
+// ==================== 维度选择 ====================
+function selectDimension(dimension) {
+  currentDimension = dimension;
+  const titles = { knowledge: '选择知识点', ability: '选择能力维度', feature: '选择题型特征', method: '选择解题方法' };
+  document.getElementById('dimension-title').textContent = titles[dimension];
+
+  const tags = PREDEFINED_TAGS[dimension];
+  const tagList = Array.isArray(tags) ? tags : (tags[currentSubject] || tags.math || []);
+
+  const container = document.getElementById('dimension-tags');
+  container.innerHTML = tagList.map(tag => `
+    <button onclick="startPractice('dimension', '${tag}')" class="px-4 py-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-left text-sm transition-colors">
+      ${tag}
+    </button>
+  `).join('');
+
+  navigate('dimension');
+}
+
+// ==================== 练习逻辑 ====================
+async function startPractice(mode, tag = null) {
+  currentTag = tag;
+  sessionStats = { correct: 0, wrong: 0, skipped: 0 };
+  currentQuestionIndex = 0;
+
+  // 加载题目
+  try {
+    const filters = { subject: currentSubject, limit: 10 };
+    if (mode === 'dimension' && tag) {
+      const dimField = currentDimension + '_tags';
+      filters[dimField] = [tag];
+    } else if (mode === 'weak') {
+      // 从错题本中找薄弱维度
+      const wrongBook = getWrongBook();
+      if (wrongBook.length > 0) {
+        // 取最近错题的知识点
+        const lastWrong = wrongBook[wrongBook.length - 1];
+        const dims = lastWrong.knowledge_tags || [];
+        if (dims.length > 0) filters.knowledge_tags = [dims[0]];
+      }
+    }
+    // random 模式不添加额外筛选
+
+    const resp = await fetch(`${API_BASE}/api/query`, {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify(filters)
+    });
+    const data = await resp.json();
+    practiceQuestions = data.questions || [];
+
+    if (practiceQuestions.length === 0) {
+      alert('该维度暂无题目，请尝试其他维度');
+      return;
+    }
+
+    // 随机打乱
+    practiceQuestions.sort(() => Math.random() - 0.5);
+
+    navigate('practice');
+    renderQuestion();
+    practiceStartTime = Date.now();
+    startTimer();
+  } catch (e) {
+    alert('加载题目失败: ' + e.message);
+  }
+}
+
+function startTimer() {
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - practiceStartTime) / 1000);
+    const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const secs = String(elapsed % 60).padStart(2, '0');
+    document.getElementById('practice-timer').textContent = `⏱️ ${mins}:${secs}`;
+  }, 1000);
+}
+
+function renderQuestion() {
+  const q = practiceQuestions[currentQuestionIndex];
+  if (!q) {
+    finishPractice();
+    return;
+  }
+
+  // 更新进度
+  const progress = ((currentQuestionIndex + 1) / practiceQuestions.length * 100);
+  document.getElementById('practice-progress-bar').style.width = progress + '%';
+  document.getElementById('practice-progress-text').textContent = `第 ${currentQuestionIndex + 1} / ${practiceQuestions.length} 题`;
+
+  // 标签
+  const tags = [];
+  (q.knowledge_tags || []).forEach(t => tags.push(`<span class="tag-pill bg-blue-100 text-blue-700">${t}</span>`));
+  (q.ability_tags || []).forEach(t => tags.push(`<span class="tag-pill bg-green-100 text-green-700">${t}</span>`));
+  (q.feature_tags || []).forEach(t => tags.push(`<span class="tag-pill bg-purple-100 text-purple-700">${t}</span>`));
+  if (q.position_tag) tags.push(`<span class="tag-pill bg-red-100 text-red-700">${q.position_tag}</span>`);
+  document.getElementById('question-tags').innerHTML = tags.join('');
+
+  // 内容
+  document.getElementById('question-content').innerHTML = escapeHtml(q.content || '');
+
+  // 图片
+  const images = q.images ? JSON.parse(q.images) : [];
+  document.getElementById('question-images').innerHTML = images.map(img =>
+    `<img src="${img}" class="max-w-full rounded-lg border" alt="题目图片">`
+  ).join('');
+
+  // 答题区
+  const answerArea = document.getElementById('answer-area');
+  currentAnswer = null;
+
+  if (q.q_type === 'choice') {
+    // 选择题 - 从选项中提取
+    const options = q.options ? JSON.parse(q.options) : ['A', 'B', 'C', 'D'];
+    answerArea.innerHTML = options.map((opt, i) => `
+      <button onclick="selectChoice('${opt}')" class="choice-option" data-value="${opt}">
+        <span class="font-bold mr-2">${opt}.</span>
+      </button>
+    `).join('');
+  } else if (q.q_type === 'fill') {
+    // 填空题
+    answerArea.innerHTML = `<input type="text" id="fill-answer" class="fill-input" placeholder="请输入答案..." oninput="currentAnswer = this.value">`;
+  } else {
+    // 解答题/其他
+    answerArea.innerHTML = `
+      <textarea id="text-answer" class="fill-input" rows="3" placeholder="写下你的解答过程..." oninput="currentAnswer = this.value"></textarea>
+      <p class="text-xs text-gray-400">💡 解答题请自行对照答案检查</p>
+    `;
+  }
+
+  // 重置反馈
+  document.getElementById('answer-feedback').classList.add('hidden');
+  document.getElementById('btn-submit').classList.remove('hidden');
+  document.getElementById('btn-next').classList.add('hidden');
+  document.getElementById('btn-show-answer').classList.add('hidden');
+
+  // 渲染公式
+  setTimeout(() => renderMathInElement(document.getElementById('question-content')), 100);
+}
+
+function selectChoice(value) {
+  currentAnswer = value;
+  document.querySelectorAll('.choice-option').forEach(btn => {
+    btn.classList.remove('selected');
+    if (btn.dataset.value === value) btn.classList.add('selected');
+  });
+}
+
+function submitAnswer() {
+  const q = practiceQuestions[currentQuestionIndex];
+  if (!currentAnswer && q.q_type !== 'comprehensive' && q.q_type !== 'proof' && q.q_type !== 'calculation') {
+    alert('请先选择或输入答案');
+    return;
+  }
+
+  // 判断正确性（简化版：选择题/填空题对比答案，解答题默认正确）
+  let isCorrect = false;
+  if (q.q_type === 'choice' || q.q_type === 'fill') {
+    const correctAnswer = (q.answer || '').trim().toLowerCase();
+    const userAnswer = (currentAnswer || '').trim().toLowerCase();
+    isCorrect = correctAnswer && userAnswer === correctAnswer;
+  } else {
+    // 解答题默认标记为正确，由学生自行判断
+    isCorrect = true;
+  }
+
+  // 记录
+  const record = {
+    question_id: q.question_id,
+    subject: currentSubject,
+    user_answer: currentAnswer || '',
+    is_correct: isCorrect,
+    timestamp: Date.now(),
+    knowledge_tags: q.knowledge_tags || [],
+    ability_tags: q.ability_tags || [],
+    q_type: q.q_type,
+    difficulty: q.difficulty,
+    time_spent: Math.floor((Date.now() - practiceStartTime) / 1000)
+  };
+  saveRecord(record);
+
+  // 更新统计
+  if (isCorrect) sessionStats.correct++;
+  else sessionStats.wrong++;
+
+  // 显示反馈
+  const feedback = document.getElementById('answer-feedback');
+  feedback.classList.remove('hidden');
+
+  if (isCorrect) {
+    feedback.className = 'mt-4 p-4 rounded-lg bg-green-50 border border-green-200';
+    feedback.innerHTML = `<div class="flex items-center gap-2 text-green-700 font-bold">✅ 回答正确！</div>`;
+  } else {
+    feedback.className = 'mt-4 p-4 rounded-lg bg-red-50 border border-red-200';
+    feedback.innerHTML = `
+      <div class="flex items-center gap-2 text-red-700 font-bold mb-2">❌ 回答错误</div>
+      <div class="text-sm text-gray-600">你的答案: <span class="font-mono bg-white px-2 py-0.5 rounded">${escapeHtml(currentAnswer || '未作答')}</span></div>
+      ${q.answer ? `<div class="text-sm text-gray-600 mt-1">正确答案: <span class="font-mono bg-white px-2 py-0.5 rounded text-green-700">${escapeHtml(q.answer)}</span></div>` : ''}
+    `;
+  }
+
+  // 高亮选项
+  if (q.q_type === 'choice') {
+    document.querySelectorAll('.choice-option').forEach(btn => {
+      const val = btn.dataset.value;
+      const correct = (q.answer || '').trim();
+      if (val === correct) btn.classList.add('correct');
+      else if (val === currentAnswer && !isCorrect) btn.classList.add('wrong');
+    });
+  }
+
+  // 显示答案按钮（解答题）
+  if (q.q_type === 'comprehensive' || q.q_type === 'proof' || q.q_type === 'calculation') {
+    document.getElementById('btn-show-answer').classList.remove('hidden');
+  }
+
+  document.getElementById('btn-submit').classList.add('hidden');
+  document.getElementById('btn-next').classList.remove('hidden');
+}
+
+function showAnswer() {
+  const q = practiceQuestions[currentQuestionIndex];
+  const feedback = document.getElementById('answer-feedback');
+  feedback.classList.remove('hidden');
+  feedback.className = 'mt-4 p-4 rounded-lg bg-blue-50 border border-blue-200';
+  feedback.innerHTML = `
+    <div class="font-bold text-blue-700 mb-2">📖 参考答案</div>
+    <div class="text-sm text-gray-700 whitespace-pre-wrap">${escapeHtml(q.answer || '暂无答案')}</div>
+    ${q.solution ? `<div class="mt-3 font-bold text-blue-700">解析</div><div class="text-sm text-gray-700 whitespace-pre-wrap">${escapeHtml(q.solution)}</div>` : ''}
+  `;
+}
+
+function skipQuestion() {
+  sessionStats.skipped++;
+  nextQuestion();
+}
+
+function nextQuestion() {
+  currentQuestionIndex++;
+  if (currentQuestionIndex >= practiceQuestions.length) {
+    finishPractice();
+  } else {
+    renderQuestion();
+  }
+}
+
+function finishPractice() {
+  if (timerInterval) clearInterval(timerInterval);
+  const total = sessionStats.correct + sessionStats.wrong + sessionStats.skipped;
+  const rate = total > 0 ? Math.round(sessionStats.correct / total * 100) : 0;
+
+  alert(`练习完成！\n共 ${total} 题 | 正确 ${sessionStats.correct} | 错误 ${sessionStats.wrong} | 跳过 ${sessionStats.skipped}\n正确率: ${rate}%`);
+  navigate('home');
+}
+
+// ==================== 错题本 ====================
+function getWrongBook() {
+  return JSON.parse(localStorage.getItem('mytiku_wrong_book') || '[]');
+}
+
+function addToWrongBook(record) {
+  const book = getWrongBook();
+  // 去重：同一题目只保留最新记录
+  const filtered = book.filter(r => r.question_id !== record.question_id);
+  filtered.push(record);
+  localStorage.setItem('mytiku_wrong_book', JSON.stringify(filtered));
+}
+
+function removeFromWrongBook(questionId) {
+  const book = getWrongBook().filter(r => r.question_id !== questionId);
+  localStorage.setItem('mytiku_wrong_book', JSON.stringify(book));
+  renderWrongBook();
+}
+
+function renderWrongBook() {
+  const book = getWrongBook();
+  const list = document.getElementById('wrong-list');
+
+  if (book.length === 0) {
+    list.innerHTML = '<div class="text-center py-12 text-gray-400">暂无错题，快去练习吧！</div>';
+    return;
+  }
+
+  // 按时间倒序
+  const sorted = [...book].sort((a, b) => b.timestamp - a.timestamp);
+
+  list.innerHTML = sorted.map(r => `
+    <div class="card p-4">
+      <div class="flex justify-between items-start mb-2">
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">${r.q_type}</span>
+          <span class="text-xs text-gray-400">${new Date(r.timestamp).toLocaleDateString()}</span>
+        </div>
+        <button onclick="removeFromWrongBook('${r.question_id}')" class="text-gray-400 hover:text-red-500 text-sm">✕</button>
+      </div>
+      <div class="text-sm text-gray-700 mb-2">题目ID: ${r.question_id}</div>
+      <div class="flex flex-wrap gap-1 mb-2">
+        ${(r.knowledge_tags || []).map(t => `<span class="tag-pill bg-blue-100 text-blue-700">${t}</span>`).join('')}
+      </div>
+      <div class="text-xs text-gray-500">你的答案: <span class="font-mono">${escapeHtml(r.user_answer || '未作答')}</span></div>
+    </div>
+  `).join('');
+}
+
+// ==================== 答题记录 ====================
 function getRecords() {
   return JSON.parse(localStorage.getItem('mytiku_records') || '[]');
 }
@@ -241,382 +657,117 @@ function saveRecord(record) {
   const records = getRecords();
   records.push(record);
   localStorage.setItem('mytiku_records', JSON.stringify(records));
-  updateWrongCount();
-}
 
-function getWrongQuestions() {
-  const records = getRecords();
-  const wrong = records.filter(r => !r.is_correct);
-  const seen = new Set();
-  return wrong.filter(r => {
-    if (seen.has(r.question_id)) return false;
-    seen.add(r.question_id);
-    return true;
-  });
-}
-
-function updateWrongCount() {
-  const count = getWrongQuestions().length;
-  document.getElementById('wrong-count').textContent = count;
-}
-
-// ==================== 标签页切换 ====================
-function switchTab(tab) {
-  ['practice', 'wrong', 'stats'].forEach(t => {
-    document.getElementById(`page-${t}`).classList.add('hidden');
-    document.getElementById(`tab-${t}`).classList.remove('text-blue-600', 'border-b-2', 'border-blue-600');
-    document.getElementById(`tab-${t}`).classList.add('text-gray-500');
-  });
-  document.getElementById(`page-${tab}`).classList.remove('hidden');
-  document.getElementById(`tab-${tab}`).classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
-  document.getElementById(`tab-${tab}`).classList.remove('text-gray-500');
-  
-  if (tab === 'wrong') renderWrongList();
-  if (tab === 'stats') renderStats();
-}
-
-// ==================== 练习配置 ====================
-document.getElementById('practice-mode').addEventListener('change', function() {
-  const knowledgeSelect = document.getElementById('knowledge-select');
-  if (this.value === 'knowledge') {
-    knowledgeSelect.classList.remove('hidden');
-    loadKnowledgeTags();
-  } else {
-    knowledgeSelect.classList.add('hidden');
-  }
-});
-
-async function loadKnowledgeTags() {
-  const container = document.getElementById('knowledge-tags');
-  const subject = document.getElementById('practice-subject').value;
-  
-  try {
-    const resp = await fetch(`${API_BASE}/api/analytics?type=tag_dimension&subject=${subject}&dimension=knowledge`, {
-      headers: { 'Authorization': `Bearer ${API_KEY}` }
-    });
-    const data = await resp.json();
-    const tags = data.tags || [];
-    
-    container.innerHTML = tags.slice(0, 20).map(t => `
-      <button onclick="toggleTag(this)" data-tag="${t.tag_name}" class="px-3 py-1 rounded-full text-sm border border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition-colors">
-        ${t.tag_name} (${t.count})
-      </button>
-    `).join('');
-  } catch (e) {
-    container.innerHTML = '<span class="text-red-400 text-sm">加载失败</span>';
+  // 如果答错，加入错题本
+  if (!record.is_correct) {
+    addToWrongBook(record);
   }
 }
 
-function toggleTag(btn) {
-  btn.classList.toggle('bg-blue-100');
-  btn.classList.toggle('border-blue-500');
-  btn.classList.toggle('text-blue-700');
-}
-
-// ==================== 练习逻辑 ====================
-let currentQuestions = [];
-let currentIndex = 0;
-let currentAnswers = {};
-
-async function startPractice() {
-  const subject = document.getElementById('practice-subject').value;
-  const mode = document.getElementById('practice-mode').value;
-  const count = parseInt(document.getElementById('practice-count').value);
-  const difficulty = document.getElementById('practice-difficulty').value;
-  
-  document.getElementById('practice-config').classList.add('hidden');
-  document.getElementById('practice-area').classList.remove('hidden');
-  document.getElementById('practice-result').classList.add('hidden');
-  
-  try {
-    let questions = [];
-    
-    if (mode === 'wrong') {
-      const wrong = getWrongQuestions();
-      questions = wrong.slice(0, count);
-      if (questions.length === 0) {
-        alert('暂无错题，先去练习吧!');
-        resetPractice();
-        return;
-      }
-    } else {
-      const filters = { subject, limit: count };
-      if (difficulty) {
-        const [min, max] = difficulty.split(',');
-        filters.difficulty = [parseInt(min), parseInt(max) || parseInt(min)];
-      }
-      
-      if (mode === 'knowledge') {
-        const selectedTags = Array.from(document.querySelectorAll('#knowledge-tags button.bg-blue-100')).map(b => b.dataset.tag);
-        if (selectedTags.length > 0) {
-          filters.knowledge_tags = selectedTags;
-        }
-      }
-      
-      const resp = await fetch(`${API_BASE}/api/query`, {
-        method: 'POST',
-        headers: apiHeaders(),
-        body: JSON.stringify(filters)
-      });
-      const data = await resp.json();
-      questions = data.questions || [];
-    }
-    
-    currentQuestions = questions;
-    currentIndex = 0;
-    currentAnswers = {};
-    
-    if (questions.length === 0) {
-      alert('未找到匹配题目，请调整筛选条件');
-      resetPractice();
-      return;
-    }
-    
-    showQuestion(0);
-  } catch (e) {
-    alert(`加载题目失败: ${e.message}`);
-    resetPractice();
-  }
-}
-
-function showQuestion(index) {
-  if (index >= currentQuestions.length) {
-    showResult();
-    return;
-  }
-  
-  const q = currentQuestions[index];
-  currentIndex = index;
-  
-  const progress = ((index + 1) / currentQuestions.length) * 100;
-  document.getElementById('progress-bar').style.width = `${progress}%`;
-  document.getElementById('progress-text').textContent = `${index + 1} / ${currentQuestions.length}`;
-  
-  document.getElementById('q-number').textContent = `#${index + 1}`;
-  document.getElementById('q-type').textContent = q.q_type || '未知';
-  document.getElementById('q-difficulty').textContent = '★'.repeat(q.difficulty || 1);
-  document.getElementById('q-score').textContent = `${q.score || 0}分`;
-  document.getElementById('q-content').textContent = q.content_preview || '题目内容加载中...';
-  
-  document.getElementById('btn-submit').classList.remove('hidden');
-  document.getElementById('btn-next').classList.add('hidden');
-  document.getElementById('answer-feedback').classList.add('hidden');
-  
-  const optionsEl = document.getElementById('q-options');
-  const fillEl = document.getElementById('q-fill-input');
-  const calcEl = document.getElementById('q-calc-input');
-  
-  optionsEl.classList.add('hidden');
-  fillEl.classList.add('hidden');
-  calcEl.classList.add('hidden');
-  
-  if (q.q_type === 'choice') {
-    optionsEl.classList.remove('hidden');
-    optionsEl.innerHTML = ['A', 'B', 'C', 'D'].map(opt => `
-      <button onclick="selectOption('${opt}')" class="option-btn" data-option="${opt}">
-        <span class="font-bold mr-2">${opt}.</span> 选项 ${opt}
-      </button>
-    `).join('');
-  } else if (q.q_type === 'fill') {
-    fillEl.classList.remove('hidden');
-    document.getElementById('fill-answer').value = '';
-  } else {
-    calcEl.classList.remove('hidden');
-    document.getElementById('calc-answer').value = '';
-  }
-}
-
-let selectedOption = null;
-
-function selectOption(opt) {
-  selectedOption = opt;
-  document.querySelectorAll('.option-btn').forEach(btn => {
-    btn.classList.remove('selected');
-    if (btn.dataset.option === opt) {
-      btn.classList.add('selected');
-    }
-  });
-}
-
-function submitAnswer() {
-  const q = currentQuestions[currentIndex];
-  let userAnswer = '';
-  
-  if (q.q_type === 'choice') {
-    userAnswer = selectedOption || '';
-    if (!userAnswer) {
-      alert('请选择一个选项');
-      return;
-    }
-  } else if (q.q_type === 'fill') {
-    userAnswer = document.getElementById('fill-answer').value.trim();
-  } else {
-    userAnswer = document.getElementById('calc-answer').value.trim();
-  }
-  
-  let isCorrect = false;
-  if (q.q_type === 'choice' && q.answer) {
-    isCorrect = userAnswer.toUpperCase() === q.answer.toUpperCase();
-  }
-  
-  const feedback = document.getElementById('answer-feedback');
-  feedback.classList.remove('hidden');
-  
-  if (q.q_type === 'choice') {
-    document.querySelectorAll('.option-btn').forEach(btn => {
-      const opt = btn.dataset.option;
-      if (opt === q.answer) {
-        btn.classList.add('correct');
-      } else if (opt === userAnswer && !isCorrect) {
-        btn.classList.add('wrong');
-      }
-    });
-    
-    feedback.className = `mt-4 p-4 rounded-lg ${isCorrect ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`;
-    feedback.innerHTML = `
-      <div class="font-bold mb-1">${isCorrect ? '✅ 回答正确!' : '❌ 回答错误'}</div>
-      <div>你的答案: ${userAnswer}</div>
-      ${q.answer ? `<div>正确答案: ${q.answer}</div>` : ''}
-      ${q.solution ? `<div class="mt-2 text-sm">${q.solution}</div>` : ''}
-    `;
-  } else {
-    feedback.className = 'mt-4 p-4 rounded-lg bg-blue-50 text-blue-800';
-    feedback.innerHTML = `
-      <div class="font-bold mb-1">答案已提交</div>
-      <div>你的答案: ${userAnswer}</div>
-      ${q.answer ? `<div>参考答案: ${q.answer}</div>` : ''}
-    `;
-  }
-  
-  saveRecord({
-    question_id: q.question_id,
-    subject: q.subject,
-    knowledge_tags: q.knowledge_tags || [],
-    user_answer: userAnswer,
-    correct_answer: q.answer,
-    is_correct: isCorrect,
-    timestamp: Date.now(),
-  });
-  
-  document.getElementById('btn-submit').classList.add('hidden');
-  document.getElementById('btn-next').classList.remove('hidden');
-}
-
-function nextQuestion() {
-  selectedOption = null;
-  showQuestion(currentIndex + 1);
-}
-
-function skipQuestion() {
-  selectedOption = null;
-  showQuestion(currentIndex + 1);
-}
-
-function showResult() {
-  document.getElementById('practice-area').classList.add('hidden');
-  document.getElementById('practice-result').classList.remove('hidden');
-  
-  const records = getRecords();
-  const sessionRecords = records.slice(-currentQuestions.length);
-  const correct = sessionRecords.filter(r => r.is_correct).length;
-  const wrong = sessionRecords.filter(r => !r.is_correct).length;
-  const accuracy = currentQuestions.length > 0 ? Math.round((correct / currentQuestions.length) * 100) : 0;
-  
-  document.getElementById('result-total').textContent = currentQuestions.length;
-  document.getElementById('result-correct').textContent = correct;
-  document.getElementById('result-wrong').textContent = wrong;
-  document.getElementById('result-accuracy').textContent = `正确率: ${accuracy}%`;
-}
-
-function resetPractice() {
-  document.getElementById('practice-config').classList.remove('hidden');
-  document.getElementById('practice-area').classList.add('hidden');
-  document.getElementById('practice-result').classList.add('hidden');
-  currentQuestions = [];
-  currentIndex = 0;
-  selectedOption = null;
-}
-
-// ==================== 错题本 ====================
-function renderWrongList() {
-  const wrong = getWrongQuestions();
-  const listEl = document.getElementById('wrong-list');
-  
-  if (wrong.length === 0) {
-    listEl.innerHTML = '<div class="text-center py-12 text-gray-400">暂无错题，开始练习吧!</div>';
-    return;
-  }
-  
-  listEl.innerHTML = wrong.map(r => `
-    <div class="bg-white rounded-lg shadow p-4">
-      <div class="flex justify-between items-start mb-2">
-        <div class="flex items-center gap-2">
-          <span class="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">错题</span>
-          <span class="text-xs text-gray-400">${new Date(r.timestamp).toLocaleDateString()}</span>
-        </div>
-      </div>
-      <div class="text-sm text-gray-700 mb-2">题目 ID: ${r.question_id}</div>
-      <div class="flex gap-4 text-sm">
-        <span class="text-red-600">你的答案: ${r.user_answer}</span>
-        <span class="text-green-600">正确答案: ${r.correct_answer}</span>
-      </div>
-      <div class="flex flex-wrap gap-1 mt-2">
-        ${(r.knowledge_tags || []).map(t => `<span class="px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">${t}</span>`).join('')}
-      </div>
-    </div>
-  `).join('');
-}
-
-// ==================== 学习统计 ====================
+// ==================== 统计 ====================
 function renderStats() {
   const records = getRecords();
+
+  // 总览
+  document.getElementById('stat-total-count').textContent = records.length;
   const correct = records.filter(r => r.is_correct).length;
-  const wrong = records.filter(r => !r.is_correct).length;
-  const total = records.length;
-  const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
-  
-  document.getElementById('stat-total').textContent = total;
-  document.getElementById('stat-correct').textContent = correct;
-  document.getElementById('stat-wrong').textContent = wrong;
-  document.getElementById('stat-accuracy').textContent = `${accuracy}%`;
-  
-  const knowledgeStats = {};
+  const rate = records.length > 0 ? Math.round(correct / records.length * 100) : 0;
+  document.getElementById('stat-total-correct').textContent = rate + '%';
+  document.getElementById('stat-total-wrong').textContent = records.length - correct;
+
+  const totalTime = Math.floor(records.reduce((sum, r) => sum + (r.time_spent || 0), 0) / 60);
+  document.getElementById('stat-total-time').textContent = totalTime;
+
+  // 维度正确率
+  const dimStats = {};
   records.forEach(r => {
     (r.knowledge_tags || []).forEach(tag => {
-      if (!knowledgeStats[tag]) {
-        knowledgeStats[tag] = { total: 0, correct: 0 };
-      }
-      knowledgeStats[tag].total++;
-      if (r.is_correct) knowledgeStats[tag].correct++;
+      if (!dimStats[tag]) dimStats[tag] = { total: 0, correct: 0 };
+      dimStats[tag].total++;
+      if (r.is_correct) dimStats[tag].correct++;
     });
   });
-  
-  const statsContainer = document.getElementById('knowledge-stats');
-  const sorted = Object.entries(knowledgeStats).sort((a, b) => b[1].total - a[1].total);
-  
-  if (sorted.length === 0) {
-    statsContainer.innerHTML = '<div class="text-gray-400 text-sm">暂无数据，开始练习后自动统计</div>';
-    return;
-  }
-  
-  statsContainer.innerHTML = sorted.map(([tag, stat]) => {
-    const pct = Math.round((stat.correct / stat.total) * 100);
-    const color = pct >= 80 ? 'bg-green-500' : pct >= 60 ? 'bg-yellow-500' : 'bg-red-500';
-    return `
-      <div class="flex items-center gap-3">
-        <span class="text-sm w-24 truncate">${tag}</span>
-        <div class="flex-1 bg-gray-200 rounded-full h-4 overflow-hidden">
-          <div class="${color} h-4 rounded-full transition-all" style="width: ${pct}%"></div>
+
+  const dimContainer = document.getElementById('dimension-stats');
+  const sortedDims = Object.entries(dimStats)
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, 10);
+
+  if (sortedDims.length === 0) {
+    dimContainer.innerHTML = '<div class="text-gray-400 text-sm">暂无数据，开始练习后将显示各知识点正确率</div>';
+  } else {
+    dimContainer.innerHTML = sortedDims.map(([tag, stat]) => {
+      const pct = Math.round(stat.correct / stat.total * 100);
+      return `
+        <div class="flex items-center gap-3">
+          <span class="text-sm w-24 truncate">${tag}</span>
+          <div class="flex-1 progress-bar">
+            <div class="progress-fill ${pct >= 80 ? 'bg-green-500' : pct >= 60 ? 'bg-yellow-500' : 'bg-red-500'}" style="width: ${pct}%"></div>
+          </div>
+          <span class="text-sm text-gray-600 w-16 text-right">${pct}% (${stat.correct}/${stat.total})</span>
         </div>
-        <span class="text-sm text-gray-600 w-16 text-right">${stat.correct}/${stat.total}</span>
-        <span class="text-sm font-medium w-12 text-right">${pct}%</span>
-      </div>
-    `;
-  }).join('');
+      `;
+    }).join('');
+  }
+
+  // 最近练习
+  const recent = document.getElementById('recent-sessions');
+  const sessions = [];
+  // 按天分组
+  const byDay = {};
+  records.forEach(r => {
+    const day = new Date(r.timestamp).toLocaleDateString();
+    if (!byDay[day]) byDay[day] = { count: 0, correct: 0 };
+    byDay[day].count++;
+    if (r.is_correct) byDay[day].correct++;
+  });
+
+  const days = Object.entries(byDay).sort((a, b) => new Date(b[0]) - new Date(a[0])).slice(0, 7);
+  if (days.length === 0) {
+    recent.innerHTML = '<div class="text-gray-400">暂无练习记录</div>';
+  } else {
+    recent.innerHTML = days.map(([day, stat]) => {
+      const rate = Math.round(stat.correct / stat.count * 100);
+      return `<div class="flex justify-between py-2 border-b border-gray-100">
+        <span>${day}</span>
+        <span>${stat.count} 题 | 正确率 ${rate}%</span>
+      </div>`;
+    }).join('');
+  }
 }
 
-// 初始化
-updateWrongCount();
+// ==================== 工具函数 ====================
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text || '';
+  return div.innerHTML;
+}
+
+function renderMathInElement(element) {
+  if (typeof katex === 'undefined' || !element) return;
+  // 简单处理：查找 $...$ 并渲染
+  let html = element.innerHTML;
+  html = html.replace(/\$([^$]+)\$/g, (match, expr) => {
+    try {
+      return katex.renderToString(expr, { throwOnError: false });
+    } catch (e) {
+      return match;
+    }
+  });
+  element.innerHTML = html;
+}
+
+// ==================== 初始化 ====================
+window.addEventListener('DOMContentLoaded', () => {
+  setSubject(currentSubject);
+  updateHomeStats();
+
+  // 从 hash 路由
+  const hash = window.location.hash.slice(1);
+  if (hash && document.getElementById(`page-${hash}`)) {
+    navigate(hash);
+  }
+});
 </script>
 
 </body>

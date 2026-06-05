@@ -123,8 +123,9 @@ def run_extraction(sample: List[Dict], db_path: str, output_dir: str) -> Dict:
     temp_input_dir = Path(output_dir) / "temp_input"
     temp_input_dir.mkdir(parents=True, exist_ok=True)
 
-    # 清空临时目录
-    for f in temp_input_dir.iterdir():
+    # 清空临时目录 — 使用更安全的方式：收集后删除
+    entries = list(temp_input_dir.iterdir())
+    for f in entries:
         if f.is_file():
             f.unlink()
         elif f.is_dir():
@@ -134,6 +135,9 @@ def run_extraction(sample: List[Dict], db_path: str, output_dir: str) -> Dict:
     for item in sample:
         src = Path(item["path"])
         dst = temp_input_dir / src.name
+        if not src.exists():
+            print(f"    ⚠️ 源文件不存在，跳过: {src}")
+            continue
         shutil.copy2(src, dst)
 
     # 运行抽取
