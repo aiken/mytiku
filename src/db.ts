@@ -105,7 +105,7 @@ export function buildQuerySQL(filters: any): { sql: string; params: any[] } {
   return { sql, params };
 }
 
-// 简化返回字段，减少 token/体积
+// 简化返回字段，减少 token/体积（保留 options 供前端选择题渲染）
 export function simplifyQuestion(row: any): any {
   return {
     question_id: row.question_id,
@@ -123,10 +123,33 @@ export function simplifyQuestion(row: any): any {
     method_tags: row.method_tags ? JSON.parse(row.method_tags) : [],
     position_tag: row.position_tag || "",
     images_count: row.images ? JSON.parse(row.images).length : 0,
+    options: row.options ? JSON.parse(row.options) : null,
+    answer: row.answer || null,
     region: row.region,
     exam_type: row.exam_type,
     year: row.year,
     subject: row.subject
+  };
+}
+
+// 获取单题详情（完整字段，含答案/解析/选项）
+export async function getQuestionById(db: D1Database, question_id: string): Promise<any | null> {
+  const row = await db.prepare(
+    `SELECT q.*, p.region, p.exam_type, p.year, p.subject, p.title as paper_title, p.district, p.school, p.round
+     FROM questions q JOIN papers p ON q.paper_id = p.paper_id
+     WHERE q.question_id = ?`
+  ).bind(question_id).first();
+  if (!row) return null;
+  return {
+    ...row,
+    tags: row.tags ? JSON.parse(String(row.tags)) : [],
+    images: row.images ? JSON.parse(String(row.images)) : [],
+    options: row.options ? JSON.parse(String(row.options)) : null,
+    data_table: row.data_table ? JSON.parse(String(row.data_table)) : null,
+    knowledge_tags: row.knowledge_tags ? JSON.parse(String(row.knowledge_tags)) : [],
+    ability_tags: row.ability_tags ? JSON.parse(String(row.ability_tags)) : [],
+    feature_tags: row.feature_tags ? JSON.parse(String(row.feature_tags)) : [],
+    method_tags: row.method_tags ? JSON.parse(String(row.method_tags)) : [],
   };
 }
 
@@ -156,6 +179,67 @@ export async function getPaperWithQuestions(db: D1Database, paper_id: string): P
      FROM questions WHERE paper_id = ? ORDER BY CAST(question_number AS INTEGER)`
   ).bind(paper_id).all();
   return { paper, questions: questions.results };
+}
+
+// 分页列表试卷（支持学科/年份/地区/考试类型筛选）
+export async function listPapers(
+  db: D1Database,
+  filters: {
+    subject?: string;
+    year?: number;
+    region?: string;
+    exam_type?: string;
+    district?: string;
+    school?: string;
+    round?: string;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{ papers: any[]; total: number }> {
+  let whereSql = "WHERE 1=1";
+  const params: any[] = [];
+
+  if (filters.subject) {
+    whereSql += " AND subject = ?";
+    params.push(filters.subject);
+  }
+  if (filters.year) {
+    whereSql += " AND year = ?";
+    params.push(filters.year);
+  }
+  if (filters.region) {
+    whereSql += " AND region = ?";
+    params.push(filters.region);
+  }
+  if (filters.exam_type) {
+    whereSql += " AND exam_type = ?";
+    params.push(filters.exam_type);
+  }
+  if (filters.district) {
+    whereSql += " AND district = ?";
+    params.push(filters.district);
+  }
+  if (filters.school) {
+    whereSql += " AND school = ?";
+    params.push(filters.school);
+  }
+  if (filters.round) {
+    whereSql += " AND round = ?";
+    params.push(filters.round);
+  }
+
+  // 统计总数
+  const countResult = await db.prepare(`SELECT COUNT(*) as total FROM papers ${whereSql}`).bind(...params).first();
+  const total = (countResult?.total as number) || 0;
+
+  // 分页查询
+  const limit = Math.min(Math.max(filters.limit || 20, 1), 100);
+  const offset = Math.max(filters.offset || 0, 0);
+  const papers = await db.prepare(
+    `SELECT * FROM papers ${whereSql} ORDER BY year DESC, title LIMIT ? OFFSET ?`
+  ).bind(...params, limit, offset).all();
+
+  return { papers: papers.results || [], total };
 }
 
 // 获取标签树

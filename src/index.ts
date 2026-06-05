@@ -1,4 +1,4 @@
-import { Env, buildQuerySQL, simplifyQuestion, getQuestionDetail, getTagTree, saveGenerated, getGenerated, fullTextSearch, getSimilarQuestions, suggestTags } from "./db";
+import { Env, buildQuerySQL, simplifyQuestion, getQuestionDetail, getTagTree, saveGenerated, getGenerated, fullTextSearch, getSimilarQuestions, suggestTags, listPapers, getQuestionById } from "./db";
 import { generateExamHTML } from "./html";
 
 // ===== 安全中间件 =====
@@ -395,6 +395,44 @@ async function handleTagSuggest(req: Request, env: Env): Promise<Response> {
   });
 }
 
+// 9. GET /api/question/:id — 单题完整详情
+async function handleQuestion(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  const questionId = url.pathname.split("/").pop() || "";
+  if (!questionId) return jsonResponse({ error: "Missing question_id" }, 400);
+
+  const question = await getQuestionById(env.DB, questionId);
+  if (!question) return jsonResponse({ error: "Question not found" }, 404);
+
+  return jsonResponse({ question });
+}
+
+// 10. GET /api/papers — 试卷分页列表
+async function handlePapersList(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  const subject = url.searchParams.get("subject") || undefined;
+  const year = url.searchParams.get("year") ? parseInt(url.searchParams.get("year")!) : undefined;
+  const region = url.searchParams.get("region") || undefined;
+  const exam_type = url.searchParams.get("exam_type") || undefined;
+  const district = url.searchParams.get("district") || undefined;
+  const school = url.searchParams.get("school") || undefined;
+  const round = url.searchParams.get("round") || undefined;
+  const limit = parseInt(url.searchParams.get("limit") || "20");
+  const offset = parseInt(url.searchParams.get("offset") || "0");
+
+  const { papers, total } = await listPapers(env.DB, {
+    subject, year, region, exam_type, district, school, round, limit, offset,
+  });
+
+  return jsonResponse({
+    papers,
+    total,
+    limit,
+    offset,
+    has_more: offset + papers.length < total,
+  });
+}
+
 // ===== 主入口 =====
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -419,6 +457,12 @@ export default {
       }
       if (path === "/api/search" && req.method === "POST") {
         return await handleSearch(req, env);
+      }
+      if (path.startsWith("/api/question/") && req.method === "GET") {
+        return await handleQuestion(req, env);
+      }
+      if (path === "/api/papers" && req.method === "GET") {
+        return await handlePapersList(req, env);
       }
       if (path.startsWith("/api/similar/") && req.method === "GET") {
         return await handleSimilar(req, env);

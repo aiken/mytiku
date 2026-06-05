@@ -456,11 +456,11 @@ function renderQuestion() {
   currentAnswer = null;
 
   if (q.q_type === 'choice') {
-    // 选择题 - 从选项中提取
-    const options = q.options ? JSON.parse(q.options) : ['A', 'B', 'C', 'D'];
+    // 选择题 - options 已由后端解析为数组
+    const options = Array.isArray(q.options) ? q.options : ['A', 'B', 'C', 'D'];
     answerArea.innerHTML = options.map((opt, i) => `
-      <button onclick="selectChoice('${opt}')" class="choice-option" data-value="${opt}">
-        <span class="font-bold mr-2">${opt}.</span>
+      <button onclick="selectChoice('${String.fromCharCode(65 + i)}')" class="choice-option" data-value="${String.fromCharCode(65 + i)}">
+        <span class="font-bold mr-2">${String.fromCharCode(65 + i)}.</span>${escapeHtml(opt)}
       </button>
     `).join('');
   } else if (q.q_type === 'fill') {
