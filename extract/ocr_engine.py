@@ -182,10 +182,32 @@ class OCREngine:
 class TesseractEngine(OCREngine):
     """Tesseract OCR 引擎（本地）"""
     
-    def __init__(self, lang: str = "chi_sim+eng", tesseract_cmd: str = "tesseract"):
+    # 常见安装路径（macOS Homebrew / Linux / Windows）
+    COMMON_PATHS = [
+        "tesseract",  # PATH 中
+        "/opt/homebrew/bin/tesseract",  # macOS Apple Silicon Homebrew
+        "/usr/local/bin/tesseract",     # macOS Intel Homebrew / Linux
+        "/usr/bin/tesseract",           # Linux 系统包
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",  # Windows
+    ]
+    
+    def __init__(self, lang: str = "chi_sim+eng", tesseract_cmd: Optional[str] = None):
         super().__init__(lang)
-        self.tesseract_cmd = tesseract_cmd
+        self.tesseract_cmd = tesseract_cmd or self._find_tesseract()
         self._check_installation()
+    
+    def _find_tesseract(self) -> str:
+        """自动查找 Tesseract 可执行文件"""
+        import shutil
+        # 先尝试 PATH
+        path_cmd = shutil.which("tesseract")
+        if path_cmd:
+            return path_cmd
+        # 再尝试常见路径
+        for p in self.COMMON_PATHS:
+            if Path(p).exists():
+                return p
+        return "tesseract"  # 回退，让 _check_installation 报错
     
     def _check_installation(self):
         """检查 Tesseract 是否已安装"""
@@ -195,8 +217,15 @@ class TesseractEngine(OCREngine):
                 capture_output=True, text=True, timeout=5
             )
             self.installed = result.returncode == 0
+            if self.installed:
+                # 提取版本号
+                version_line = result.stdout.strip().split('\n')[0]
+                self.version = version_line
+            else:
+                self.version = None
         except (FileNotFoundError, subprocess.TimeoutExpired):
             self.installed = False
+            self.version = None
     
     def recognize(self, image_path: str) -> OCRResult:
         """使用 Tesseract 识别图片"""
