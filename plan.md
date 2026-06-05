@@ -55,6 +55,7 @@
 | #16 | 数据抽取验证框架 | 🔄 框架完成 | validation_runner.py |
 | #8 | 子题拆分增强 | ✅ 已完成 | schema.sql + local_db.py + extract_all.py |
 | #9 | 答案/解析分离 | ✅ 已完成 | extract_all.py extract_answers_from_end() |
+| #11 | Web 管理后台 | ✅ 已完成 | admin/index.html |
 
 ---
 
