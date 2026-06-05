@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyTiku 管理后台</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .math-content { font-size: 1.1em; }
+  .tag-pill { @apply px-2 py-1 rounded-full text-xs font-medium; }
+  .tag-knowledge { @apply bg-blue-100 text-blue-700; }
+  .tag-ability { @apply bg-green-100 text-green-700; }
+  .tag-feature { @apply bg-purple-100 text-purple-700; }
+  .tag-method { @apply bg-orange-100 text-orange-700; }
+  .tag-position { @apply bg-red-100 text-red-700; }
+  .loading { @apply animate-pulse bg-gray-200 rounded; }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- 导航栏 -->
+<nav class="bg-slate-800 text-white shadow-lg">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <h1 class="text-xl font-bold">📚 MyTiku 管理后台</h1>
+      <span class="text-sm text-slate-400">中考数学/物理题库</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <input id="apiKey" type="password" placeholder="API Key" class="px-3 py-1 rounded bg-slate-700 text-sm border border-slate-600 focus:outline-none focus:border-blue-400" value="">
+      <button onclick="saveApiKey()" class="px-3 py-1 bg-blue-600 rounded text-sm hover:bg-blue-700">保存</button>
+    </div>
+  </div>
+</nav>
+
+<!-- 主内容区 -->
+<div class="max-w-7xl mx-auto px-4 py-6">
+  
+  <!-- 标签页切换 -->
+  <div class="flex gap-2 mb-6 border-b border-gray-200">
+    <button onclick="switchTab('questions')" id="tab-questions" class="px-4 py-2 font-medium text-blue-600 border-b-2 border-blue-600">题目列表</button>
+    <button onclick="switchTab('papers')" id="tab-papers" class="px-4 py-2 font-medium text-gray-500 hover:text-gray-700">试卷列表</button>
+    <button onclick="switchTab('generate')" id="tab-generate" class="px-4 py-2 font-medium text-gray-500 hover:text-gray-700">组卷配置</button>
+    <button onclick="switchTab('preview')" id="tab-preview" class="px-4 py-2 font-medium text-gray-500 hover:text-gray-700">试卷预览</button>
+  </div>
+
+  <!-- 题目列表页 -->
+  <div id="page-questions" class="space-y-4">
+    <!-- 筛选栏 -->
+    <div class="bg-white rounded-lg shadow p-4 space-y-3">
+      <div class="flex flex-wrap gap-3">
+        <select id="filter-subject" class="px-3 py-2 border rounded-lg text-sm">
+          <option value="">全部学科</option>
+          <option value="math">数学</option>
+          <option value="physics">物理</option>
+        </select>
+        <select id="filter-qtype" class="px-3 py-2 border rounded-lg text-sm">
+          <option value="">全部题型</option>
+          <option value="choice">选择题</option>
+          <option value="fill">填空题</option>
+          <option value="calculation">计算题</option>
+          <option value="proof">证明题</option>
+          <option value="experiment">实验题</option>
+        </select>
+        <select id="filter-position" class="px-3 py-2 border rounded-lg text-sm">
+          <option value="">全部定位</option>
+          <option value="basic">基础题</option>
+          <option value="medium">中档题</option>
+          <option value="comprehensive">综合题</option>
+          <option value="advanced">压轴题</option>
+        </select>
+        <select id="filter-difficulty" class="px-3 py-2 border rounded-lg text-sm">
+          <option value="">全部难度</option>
+          <option value="1">★ (简单)</option>
+          <option value="2">★★ (较易)</option>
+          <option value="3">★★★ (中等)</option>
+          <option value="4">★★★★ (较难)</option>
+          <option value="5">★★★★★ (困难)</option>
+        </select>
+        <input id="filter-tags" type="text" placeholder="标签筛选 (如: 几何,圆)" class="px-3 py-2 border rounded-lg text-sm flex-1 min-w-[200px]">
+        <input id="filter-search" type="text" placeholder="全文搜索..." class="px-3 py-2 border rounded-lg text-sm flex-1 min-w-[200px]">
+        <button onclick="loadQuestions()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">🔍 查询</button>
+      </div>
+    </div>
+
+    <!-- 统计信息 -->
+    <div id="question-stats" class="text-sm text-gray-500"></div>
+
+    <!-- 题目列表 -->
+    <div id="question-list" class="space-y-3">
+      <div class="text-center py-12 text-gray-400">点击"查询"加载题目</div>
+    </div>
+  </div>
+
+  <!-- 试卷列表页 -->
+  <div id="page-papers" class="hidden space-y-4">
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="flex gap-3">
+        <select id="paper-subject" class="px-3 py-2 border rounded-lg text-sm">
+          <option value="">全部学科</option>
+          <option value="math">数学</option>
+          <option value="physics">物理</option>
+        </select>
+        <input id="paper-search" type="text" placeholder="搜索试卷标题..." class="px-3 py-2 border rounded-lg text-sm flex-1">
+        <button onclick="loadPapers()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">🔍 查询</button>
+      </div>
+    </div>
+    <div id="paper-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div class="text-center py-12 text-gray-400 col-span-full">点击"查询"加载试卷</div>
+    </div>
+  </div>
+
+  <!-- 组卷配置页 -->
+  <div id="page-generate" class="hidden space-y-4">
+    <div class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-lg font-bold mb-4">📝 组卷配置</h2>
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium mb-1">试卷名称</label>
+            <input id="gen-name" type="text" placeholder="如：海淀区九年级期末模拟" class="w-full px-3 py-2 border rounded-lg">
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">学科</label>
+            <select id="gen-subject" class="w-full px-3 py-2 border rounded-lg">
+              <option value="math">数学</option>
+              <option value="physics">物理</option>
+            </select>
+          </div>
+        </div>
+        
+        <div id="gen-rules" class="space-y-3">
+          <!-- 动态添加规则 -->
+        </div>
+        
+        <button onclick="addRule()" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200">+ 添加筛选规则</button>
+        <button onclick="generatePaper()" class="px-6 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 ml-2">✨ 生成试卷</button>
+      </div>
+    </div>
+    
+    <div id="gen-result" class="hidden bg-white rounded-lg shadow p-6">
+      <h3 class="font-bold mb-2">生成结果</h3>
+      <div id="gen-result-content"></div>
+      <a id="gen-preview-link" href="#" target="_blank" class="inline-block mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">预览试卷</a>
+    </div>
+  </div>
+
+  <!-- 试卷预览页 -->
+  <div id="page-preview" class="hidden space-y-4">
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="flex gap-3">
+        <input id="preview-gen-id" type="text" placeholder="输入 gen_id" class="px-3 py-2 border rounded-lg text-sm flex-1">
+        <button onclick="loadPreview()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">加载预览</button>
+        <button onclick="printPreview()" class="px-4 py-2 bg-gray-600 text-white rounded-lg text-sm hover:bg-gray-700">🖨️ 打印</button>
+      </div>
+    </div>
+    <div id="preview-frame" class="bg-white rounded-lg shadow min-h-[600px]">
+      <div class="text-center py-12 text-gray-400">输入 gen_id 加载试卷预览</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 题目详情模态框 -->
+<div id="modal-question" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+    <div class="p-6">
+      <div class="flex justify-between items-start mb-4">
+        <h3 class="text-lg font-bold">题目详情</h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+      </div>
+      <div id="modal-content" class="space-y-4"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== 配置 ====================
+const API_BASE = ''; // 同域部署时为空，跨域时填写 Workers URL
+let API_KEY = localStorage.getItem('mytiku_api_key') || '';
+
+document.getElementById('apiKey').value = API_KEY;
+
+function saveApiKey() {
+  API_KEY = document.getElementById('apiKey').value;
+  localStorage.setItem('mytiku_api_key', API_KEY);
+  alert('API Key 已保存');
+}
+
+function apiHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${API_KEY}`
+  };
+}
+
+// ==================== 标签页切换 ====================
+function switchTab(tab) {
+  ['questions', 'papers', 'generate', 'preview'].forEach(t => {
+    document.getElementById(`page-${t}`).classList.add('hidden');
+    document.getElementById(`tab-${t}`).classList.remove('text-blue-600', 'border-b-2', 'border-blue-600');
+    document.getElementById(`tab-${t}`).classList.add('text-gray-500');
+  });
+  document.getElementById(`page-${tab}`).classList.remove('hidden');
+  document.getElementById(`tab-${tab}`).classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
+  document.getElementById(`tab-${tab}`).classList.remove('text-gray-500');
+}
+
+// ==================== 题目列表 ====================
+async function loadQuestions() {
+  const listEl = document.getElementById('question-list');
+  listEl.innerHTML = '<div class="text-center py-12"><div class="inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>';
+  
+  const subject = document.getElementById('filter-subject').value;
+  const q_type = document.getElementById('filter-qtype').value;
+  const position = document.getElementById('filter-position').value;
+  const difficulty = document.getElementById('filter-difficulty').value;
+  const tags = document.getElementById('filter-tags').value;
+  const search = document.getElementById('filter-search').value;
+  
+  try {
+    let questions = [];
+    
+    if (search) {
+      // 全文搜索
+      const resp = await fetch(`${API_BASE}/api/search`, {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({ query: search, subject, limit: 20 })
+      });
+      const data = await resp.json();
+      questions = data.questions || [];
+    } else {
+      // 筛选查询
+      const filters = { subject, limit: 20 };
+      if (q_type) filters.q_type = [q_type];
+      if (position) filters.position = [position];
+      if (difficulty) filters.difficulty = [parseInt(difficulty), parseInt(difficulty)];
+      if (tags) {
+        const tagList = tags.split(',').map(t => t.trim()).filter(Boolean);
+        filters.knowledge_tags = tagList;
+      }
+      
+      const resp = await fetch(`${API_BASE}/api/query`, {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify(filters)
+      });
+      const data = await resp.json();
+      questions = data.questions || [];
+    }
+    
+    document.getElementById('question-stats').textContent = `共 ${questions.length} 题`;
+    renderQuestions(questions);
+  } catch (e) {
+    listEl.innerHTML = `<div class="text-center py-12 text-red-500">加载失败: ${e.message}</div>`;
+  }
+}
+
+function renderQuestions(questions) {
+  const listEl = document.getElementById('question-list');
+  if (questions.length === 0) {
+    listEl.innerHTML = '<div class="text-center py-12 text-gray-400">无匹配题目</div>';
+    return;
+  }
+  
+  listEl.innerHTML = questions.map(q => `
+    <div class="bg-white rounded-lg shadow p-4 hover:shadow-md transition-shadow cursor-pointer" onclick="showQuestionDetail('${q.question_id}')">
+      <div class="flex justify-between items-start mb-2">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-bold text-slate-700">#${q.question_number}</span>
+          <span class="px-2 py-0.5 rounded text-xs ${q.q_type === 'choice' ? 'bg-blue-100 text-blue-700' : q.q_type === 'fill' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}">${q.q_type}</span>
+          <span class="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">${q.position}</span>
+          <span class="text-xs text-gray-400">${'★'.repeat(q.difficulty || 1)}</span>
+          <span class="text-xs text-gray-400">${q.score}分</span>
+        </div>
+        <span class="text-xs text-gray-400">${q.year} ${q.region}</span>
+      </div>
+      <div class="math-content text-sm text-gray-700 mb-3 line-clamp-3">${escapeHtml(q.content_preview || '')}</div>
+      <div class="flex flex-wrap gap-1">
+        ${(q.knowledge_tags || []).map(t => `<span class="tag-pill tag-knowledge">${t}</span>`).join('')}
+        ${(q.ability_tags || []).map(t => `<span class="tag-pill tag-ability">${t}</span>`).join('')}
+        ${(q.feature_tags || []).map(t => `<span class="tag-pill tag-feature">${t}</span>`).join('')}
+        ${(q.method_tags || []).map(t => `<span class="tag-pill tag-method">${t}</span>`).join('')}
+        ${q.position_tag ? `<span class="tag-pill tag-position">${q.position_tag}</span>` : ''}
+      </div>
+    </div>
+  `).join('');
+  
+  // 渲染 KaTeX 公式
+  setTimeout(() => {
+    document.querySelectorAll('.math-content').forEach(el => {
+      renderMath(el);
+    });
+  }, 100);
+}
+
+function renderMath(element) {
+  if (typeof katex !== 'undefined') {
+    const text = element.textContent;
+    // 简单替换 $...$ 为 KaTeX 渲染
+    // 实际项目中应使用更完善的 Markdown+KaTeX 渲染
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ==================== 题目详情 ====================
+async function showQuestionDetail(questionId) {
+  const modal = document.getElementById('modal-question');
+  const content = document.getElementById('modal-content');
+  content.innerHTML = '<div class="text-center py-8"><div class="inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>';
+  modal.classList.remove('hidden');
+  
+  try {
+    // 通过 query API 获取详情（实际应使用 /api/question/:id）
+    const resp = await fetch(`${API_BASE}/api/query`, {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({ limit: 1 })
+    });
+    // 临时：显示 ID
+    content.innerHTML = `
+      <div class="text-center text-gray-500">
+        <p>题目 ID: ${questionId}</p>
+        <p class="text-sm mt-2">（完整详情功能需后端支持 GET /api/question/:id）</p>
+      </div>
+    `;
+  } catch (e) {
+    content.innerHTML = `<div class="text-red-500">加载失败: ${e.message}</div>`;
+  }
+}
+
+function closeModal() {
+  document.getElementById('modal-question').classList.add('hidden');
+}
+
+// ==================== 试卷列表 ====================
+async function loadPapers() {
+  const listEl = document.getElementById('paper-list');
+  listEl.innerHTML = '<div class="text-center py-12 col-span-full"><div class="inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>';
+  
+  // 临时：显示提示
+  listEl.innerHTML = '<div class="text-center py-12 text-gray-400 col-span-full">试卷列表功能需后端支持分页查询</div>';
+}
+
+// ==================== 组卷配置 ====================
+let ruleCount = 0;
+
+function addRule() {
+  ruleCount++;
+  const container = document.getElementById('gen-rules');
+  const ruleEl = document.createElement('div');
+  ruleEl.className = 'bg-gray-50 rounded-lg p-4 space-y-3';
+  ruleEl.innerHTML = `
+    <div class="flex justify-between items-center">
+      <span class="font-medium text-sm">规则 ${ruleCount}</span>
+      <button onclick="this.closest('.bg-gray-50').remove()" class="text-red-500 text-sm hover:text-red-700">删除</button>
+    </div>
+    <div class="grid grid-cols-4 gap-3">
+      <select class="rule-qtype px-2 py-1 border rounded text-sm">
+        <option value="">题型不限</option>
+        <option value="choice">选择题</option>
+        <option value="fill">填空题</option>
+        <option value="calculation">计算题</option>
+      </select>
+      <select class="rule-position px-2 py-1 border rounded text-sm">
+        <option value="">定位不限</option>
+        <option value="basic">基础题</option>
+        <option value="medium">中档题</option>
+        <option value="comprehensive">综合题</option>
+        <option value="advanced">压轴题</option>
+      </select>
+      <input type="number" class="rule-count px-2 py-1 border rounded text-sm" placeholder="题数" value="5" min="1" max="20">
+      <input type="text" class="rule-tags px-2 py-1 border rounded text-sm" placeholder="标签 (逗号分隔)">
+    </div>
+  `;
+  container.appendChild(ruleEl);
+}
+
+async function generatePaper() {
+  const name = document.getElementById('gen-name').value;
+  const subject = document.getElementById('gen-subject').value;
+  
+  if (!name) {
+    alert('请输入试卷名称');
+    return;
+  }
+  
+  const rules = [];
+  document.querySelectorAll('#gen-rules > div').forEach(el => {
+    const q_type = el.querySelector('.rule-qtype').value;
+    const position = el.querySelector('.rule-position').value;
+    const count = parseInt(el.querySelector('.rule-count').value) || 5;
+    const tags = el.querySelector('.rule-tags').value;
+    
+    const rule = { count };
+    if (q_type) rule.q_type = q_type;
+    if (position) rule.position = position;
+    if (tags) rule.tags = tags.split(',').map(t => t.trim()).filter(Boolean);
+    rules.push(rule);
+  });
+  
+  if (rules.length === 0) {
+    alert('请至少添加一条筛选规则');
+    return;
+  }
+  
+  try {
+    const resp = await fetch(`${API_BASE}/api/generate`, {
+      method: 'POST',
+      headers: apiHeaders(),
+      body: JSON.stringify({ name, subject, filters: rules })
+    });
+    const data = await resp.json();
+    
+    if (data.error) {
+      alert(`生成失败: ${data.error}`);
+      return;
+    }
+    
+    const resultEl = document.getElementById('gen-result');
+    const contentEl = document.getElementById('gen-result-content');
+    resultEl.classList.remove('hidden');
+    contentEl.innerHTML = `
+      <p><strong>试卷 ID:</strong> ${data.gen_id}</p>
+      <p><strong>名称:</strong> ${data.name}</p>
+      <p><strong>学科:</strong> ${data.subject}</p>
+      <p><strong>总分:</strong> ${data.total_score}</p>
+      <p><strong>题数:</strong> ${data.question_count}</p>
+    `;
+    document.getElementById('gen-preview-link').href = `${API_BASE}/api/html/${data.gen_id}`;
+    
+    // 自动切换到预览页
+    document.getElementById('preview-gen-id').value = data.gen_id;
+  } catch (e) {
+    alert(`生成失败: ${e.message}`);
+  }
+}
+
+// ==================== 试卷预览 ====================
+async function loadPreview() {
+  const genId = document.getElementById('preview-gen-id').value;
+  if (!genId) {
+    alert('请输入 gen_id');
+    return;
+  }
+  
+  const frame = document.getElementById('preview-frame');
+  frame.innerHTML = '<div class="text-center py-12"><div class="inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>';
+  
+  try {
+    const resp = await fetch(`${API_BASE}/api/html/${genId}`, {
+      headers: { 'Authorization': `Bearer ${API_KEY}` }
+    });
+    const html = await resp.text();
+    frame.innerHTML = html;
+  } catch (e) {
+    frame.innerHTML = `<div class="text-center py-12 text-red-500">加载失败: ${e.message}</div>`;
+  }
+}
+
+function printPreview() {
+  const frame = document.getElementById('preview-frame');
+  const win = window.open('', '_blank');
+  win.document.write(frame.innerHTML);
+  win.document.close();
+  win.print();
+}
+
+// 初始化
+addRule();
+</script>
+
+</body>
+</html>
