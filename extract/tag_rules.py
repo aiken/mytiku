@@ -250,6 +250,12 @@ def auto_tag(content: str, subject: str, question_number: int = 0,
             "position": "压轴题"
         }
     """
+    # 确保 question_number 为整数（兼容字符串传入）
+    try:
+        question_number = int(question_number)
+    except (ValueError, TypeError):
+        question_number = 0
+    
     if not content:
         return {
             "knowledge": ["未分类"],
