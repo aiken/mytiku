@@ -63,7 +63,7 @@ async function handleQuery(req: Request, env: Env): Promise<Response> {
 
 // 2. POST /api/generate — 组卷生成
 async function handleGenerate(req: Request, env: Env): Promise<Response> {
-  const body = await req.json();
+  const body = await req.json() as any;
   const { subject, name, filters, template_id } = body;
   if (!subject || !name) return jsonResponse({ error: "Missing subject or name" }, 400);
 
@@ -271,7 +271,7 @@ async function handleHTML(req: Request, env: Env): Promise<Response> {
 
 // 5. POST /api/search — 全文搜索
 async function handleSearch(req: Request, env: Env): Promise<Response> {
-  const body = await req.json();
+  const body = await req.json() as any;
   const { query, subject, q_type, difficulty, limit = 20 } = body;
 
   if (!query || typeof query !== "string" || query.trim().length === 0) {
@@ -292,23 +292,41 @@ async function handleSearch(req: Request, env: Env): Promise<Response> {
   });
 }
 
-// 6. GET /api/similar/:question_id — 相似题目推荐
+// 6. GET /api/similar/:question_id — 相似题目推荐 (Issue #5)
 async function handleSimilar(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const questionId = url.pathname.split("/").pop() || "";
   if (!questionId) return jsonResponse({ error: "Missing question_id" }, 400);
 
   const limit = parseInt(url.searchParams.get("limit") || "5");
-  const results = await getSimilarQuestions(env.DB, questionId, Math.min(limit, 20));
+  const subject = url.searchParams.get("subject") || undefined;
+  const results = await getSimilarQuestions(env.DB, questionId, Math.min(limit, 20), subject);
 
   return jsonResponse({
     question_id: questionId,
     count: results.length,
-    questions: results.map(simplifyQuestion),
+    similar: results.map((q: any) => ({
+      question_id: q.question_id,
+      similarity_score: q.similarity_score,
+      content_preview: q.content ? String(q.content).substring(0, 150) + "..." : "",
+      q_type: q.q_type,
+      position: q.position,
+      score: q.score,
+      difficulty: q.difficulty,
+      knowledge_tags: q.knowledge_tags ? JSON.parse(q.knowledge_tags) : [],
+      ability_tags: q.ability_tags ? JSON.parse(q.ability_tags) : [],
+      feature_tags: q.feature_tags ? JSON.parse(q.feature_tags) : [],
+      method_tags: q.method_tags ? JSON.parse(q.method_tags) : [],
+      position_tag: q.position_tag || "",
+      region: q.region,
+      exam_type: q.exam_type,
+      year: q.year,
+      subject: q.subject,
+    })),
   });
 }
 
-// 7. GET /api/paper/:paper_id — 试卷详情
+// 7. GET /api/paper/:paper_id — 试卷详情 (Issue #6)
 async function handlePaper(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const paperId = url.pathname.split("/").pop() || "";
@@ -317,42 +335,60 @@ async function handlePaper(req: Request, env: Env): Promise<Response> {
   const paper = await env.DB.prepare("SELECT * FROM papers WHERE paper_id = ?").bind(paperId).first();
   if (!paper) return jsonResponse({ error: "Paper not found" }, 404);
 
+  // 分页参数
+  const page = parseInt(url.searchParams.get("page") || "1");
+  const pageSize = parseInt(url.searchParams.get("page_size") || "50");
+  const safePageSize = Math.min(Math.max(pageSize, 1), 100);
+  const offset = (Math.max(page, 1) - 1) * safePageSize;
+
+  // 先统计总题数
+  const countResult = await env.DB.prepare(
+    "SELECT COUNT(*) as total FROM questions WHERE paper_id = ?"
+  ).bind(paperId).first();
+  const totalQuestions = (countResult?.total as number) || 0;
+
+  // 分页查询题目
   const questions = await env.DB.prepare(
     `SELECT question_id, question_number, q_type, position, score, difficulty, content, tags, images, knowledge_tags, ability_tags, feature_tags, method_tags, position_tag
-     FROM questions WHERE paper_id = ? ORDER BY CAST(question_number AS INTEGER)`
-  ).bind(paperId).all();
+     FROM questions WHERE paper_id = ? ORDER BY CAST(question_number AS INTEGER) LIMIT ? OFFSET ?`
+  ).bind(paperId, safePageSize, offset).all();
+
+  const questionList = (questions.results || []).map((q: any) => ({
+    ...q,
+    tags: q.tags ? JSON.parse(q.tags) : [],
+    images: q.images ? JSON.parse(q.images) : [],
+    knowledge_tags: q.knowledge_tags ? JSON.parse(q.knowledge_tags) : [],
+    ability_tags: q.ability_tags ? JSON.parse(q.ability_tags) : [],
+    feature_tags: q.feature_tags ? JSON.parse(q.feature_tags) : [],
+    method_tags: q.method_tags ? JSON.parse(q.method_tags) : [],
+  }));
 
   return jsonResponse({
     paper,
-    question_count: questions.results?.length || 0,
-    questions: (questions.results || []).map((q: any) => ({
-      ...q,
-      tags: q.tags ? JSON.parse(q.tags) : [],
-      images: q.images ? JSON.parse(q.images) : [],
-      knowledge_tags: q.knowledge_tags ? JSON.parse(q.knowledge_tags) : [],
-      ability_tags: q.ability_tags ? JSON.parse(q.ability_tags) : [],
-      feature_tags: q.feature_tags ? JSON.parse(q.feature_tags) : [],
-      method_tags: q.method_tags ? JSON.parse(q.method_tags) : [],
-    })),
+    question_count: totalQuestions,
+    page,
+    page_size: safePageSize,
+    total_pages: Math.ceil(totalQuestions / safePageSize),
+    questions: questionList,
   });
 }
 
-// 8. GET /api/tags/suggest — 标签自动补全
+// 8. GET /api/tags/suggest — 标签自动补全 (Issue #7)
 async function handleTagSuggest(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   const subject = url.searchParams.get("subject");
-  const prefix = url.searchParams.get("prefix");
+  const query = url.searchParams.get("q");
   const dimension = url.searchParams.get("dimension") || "knowledge";
   const limit = parseInt(url.searchParams.get("limit") || "10");
 
   if (!subject) return jsonResponse({ error: "Missing subject" }, 400);
-  if (!prefix || prefix.length < 1) return jsonResponse({ error: "Missing prefix (min 1 char)" }, 400);
+  if (!query || query.length < 1) return jsonResponse({ error: "Missing query (min 1 char)" }, 400);
 
-  const suggestions = await suggestTags(env.DB, subject, prefix, dimension, Math.min(limit, 20));
+  const suggestions = await suggestTags(env.DB, env.KV, subject, query, dimension, Math.min(limit, 20));
 
   return jsonResponse({
     subject,
-    prefix,
+    query,
     dimension,
     count: suggestions.length,
     suggestions,
@@ -399,7 +435,7 @@ export default {
         return jsonResponse({ tags: await getTagTree(env.DB, subject) });
       }
       if (path === "/api/template" && req.method === "POST") {
-        const body = await req.json();
+        const body = await req.json() as any;
         const { name, subject, rules } = body;
         if (!name || !subject || !rules) return jsonResponse({ error: "Missing fields" }, 400);
         const tid = crypto.randomUUID();

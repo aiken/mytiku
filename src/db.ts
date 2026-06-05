@@ -140,10 +140,10 @@ export async function getQuestionDetail(db: D1Database, question_id: string): Pr
   if (!row) return null;
   return {
     ...row,
-    tags: row.tags ? JSON.parse(row.tags) : [],
-    images: row.images ? JSON.parse(row.images) : [],
-    options: row.options ? JSON.parse(row.options) : null,
-    data_table: row.data_table ? JSON.parse(row.data_table) : null
+    tags: row.tags ? JSON.parse(String(row.tags)) : [],
+    images: row.images ? JSON.parse(String(row.images)) : [],
+    options: row.options ? JSON.parse(String(row.options)) : null,
+    data_table: row.data_table ? JSON.parse(String(row.data_table)) : null
   };
 }
 
@@ -177,7 +177,7 @@ export async function saveGenerated(db: D1Database, gen_id: string, template_id:
 export async function getGenerated(db: D1Database, gen_id: string): Promise<any | null> {
   const row = await db.prepare("SELECT * FROM generated WHERE gen_id = ?").bind(gen_id).first();
   if (!row) return null;
-  return { ...row, question_ids: row.question_ids ? JSON.parse(row.question_ids) : [] };
+  return { ...row, question_ids: row.question_ids ? JSON.parse(String(row.question_ids)) : [] };
 }
 
 // 全文搜索（基于内容 LIKE 匹配 + 标签筛选）
@@ -221,44 +221,101 @@ export async function fullTextSearch(db: D1Database, query: string, filters: any
   return result.results as any[];
 }
 
-// 相似题目推荐（基于同试卷同知识点）
-export async function getSimilarQuestions(db: D1Database, question_id: string, limit: number = 5): Promise<any[]> {
+// 相似题目推荐（基于 5 维度标签加权相似度）
+// Issue #5: 权重设计 knowledge(0.4) > ability(0.2) > method(0.2) > feature(0.1) > position(0.1)
+const SIMILARITY_WEIGHTS = {
+  knowledge: 0.4,
+  ability: 0.2,
+  method: 0.2,
+  feature: 0.1,
+  position: 0.1,
+};
+
+function jaccardSimilarity(setA: string[], setB: string[]): number {
+  if (setA.length === 0 && setB.length === 0) return 0;
+  const intersection = setA.filter(x => setB.includes(x));
+  const union = new Set([...setA, ...setB]);
+  return union.size === 0 ? 0 : intersection.length / union.size;
+}
+
+function computeWeightedSimilarity(
+  source: Record<string, any>,
+  target: Record<string, any>
+): number {
+  const sKnowledge = source.knowledge_tags ? JSON.parse(String(source.knowledge_tags)) : [];
+  const sAbility = source.ability_tags ? JSON.parse(String(source.ability_tags)) : [];
+  const sMethod = source.method_tags ? JSON.parse(String(source.method_tags)) : [];
+  const sFeature = source.feature_tags ? JSON.parse(String(source.feature_tags)) : [];
+  const sPosition = source.position_tag ? [String(source.position_tag)] : [];
+
+  const tKnowledge = target.knowledge_tags ? JSON.parse(String(target.knowledge_tags)) : [];
+  const tAbility = target.ability_tags ? JSON.parse(String(target.ability_tags)) : [];
+  const tMethod = target.method_tags ? JSON.parse(String(target.method_tags)) : [];
+  const tFeature = target.feature_tags ? JSON.parse(String(target.feature_tags)) : [];
+  const tPosition = target.position_tag ? [String(target.position_tag)] : [];
+
+  const score =
+    SIMILARITY_WEIGHTS.knowledge * jaccardSimilarity(sKnowledge, tKnowledge) +
+    SIMILARITY_WEIGHTS.ability * jaccardSimilarity(sAbility, tAbility) +
+    SIMILARITY_WEIGHTS.method * jaccardSimilarity(sMethod, tMethod) +
+    SIMILARITY_WEIGHTS.feature * jaccardSimilarity(sFeature, tFeature) +
+    SIMILARITY_WEIGHTS.position * jaccardSimilarity(sPosition, tPosition);
+
+  return Math.round(score * 100) / 100; // 保留两位小数
+}
+
+export async function getSimilarQuestions(db: D1Database, question_id: string, limit: number = 5, subjectFilter?: string): Promise<any[]> {
   // 获取源题信息
   const source = await db.prepare(
     `SELECT q.*, p.subject FROM questions q JOIN papers p ON q.paper_id = p.paper_id WHERE q.question_id = ?`
   ).bind(question_id).first();
   if (!source) return [];
 
-  const subject = source.subject as string;
-  const knowledgeTags = source.knowledge_tags ? JSON.parse(source.knowledge_tags as string) : [];
-  const qType = source.q_type as string;
+  const subject = subjectFilter || (source.subject as string);
   const paperId = source.paper_id as string;
+  const qType = source.q_type as string;
 
-  // 构建相似度查询：同知识点 + 同题型 + 不同试卷
-  let sql = `SELECT q.question_id, q.question_number, q.paper_id, q.q_type, q.position, q.score, q.difficulty, q.content, q.tags, q.images, q.knowledge_tags, p.region, p.exam_type, p.year, p.subject
-             FROM questions q
-             JOIN papers p ON q.paper_id = p.paper_id
-             WHERE q.question_id != ? AND p.subject = ? AND q.q_type = ? AND q.paper_id != ?`;
-  const params: any[] = [question_id, subject, qType, paperId];
+  // 查询同学科、同题型、不同试卷的候选题目（扩大候选池到 limit*3）
+  const candidateLimit = Math.min(limit * 3, 100);
+  const result = await db.prepare(
+    `SELECT q.question_id, q.question_number, q.paper_id, q.q_type, q.position, q.score, q.difficulty, q.content, q.tags, q.images, q.knowledge_tags, q.ability_tags, q.feature_tags, q.method_tags, q.position_tag, p.region, p.exam_type, p.year, p.subject, p.district, p.school
+     FROM questions q
+     JOIN papers p ON q.paper_id = p.paper_id
+     WHERE q.question_id != ? AND p.subject = ? AND q.q_type = ? AND q.paper_id != ?
+     ORDER BY RANDOM()
+     LIMIT ?`
+  ).bind(question_id, subject, qType, paperId, candidateLimit).all();
 
-  // 知识点匹配（至少一个相同）
-  if (knowledgeTags.length > 0) {
-    const conditions = knowledgeTags.map(() => "q.knowledge_tags LIKE ?").join(" OR ");
-    sql += ` AND (${conditions})`;
-    for (const tag of knowledgeTags) {
-      params.push(`%"${tag}"%`);
-    }
-  }
+  const candidates = result.results || [];
 
-  sql += " ORDER BY RANDOM() LIMIT ?";
-  params.push(Math.min(limit, 20));
+  // 计算加权相似度并排序
+  const scored = candidates.map((row: any) => {
+    const score = computeWeightedSimilarity(source, row);
+    return { ...row, similarity_score: score };
+  });
 
-  const result = await db.prepare(sql).bind(...params).all();
-  return result.results as any[];
+  scored.sort((a: any, b: any) => b.similarity_score - a.similarity_score);
+
+  return scored.slice(0, limit);
 }
 
-// 标签自动补全
-export async function suggestTags(db: D1Database, subject: string, prefix: string, dimension: string = "knowledge", limit: number = 10): Promise<any[]> {
+// 标签自动补全（Issue #7）
+// 返回标签使用频率，支持 KV 缓存
+export async function suggestTags(
+  db: D1Database,
+  kv: KVNamespace,
+  subject: string,
+  query: string,
+  dimension: string = "knowledge",
+  limit: number = 10
+): Promise<any[]> {
+  const cacheKey = `tags:suggest:${subject}:${dimension}:${query}`;
+  const cached = await kv.get(cacheKey);
+  if (cached) {
+    const parsed = JSON.parse(cached);
+    return parsed.slice(0, limit);
+  }
+
   const dimColumn = {
     "knowledge": "knowledge_tags",
     "ability": "ability_tags",
@@ -268,19 +325,19 @@ export async function suggestTags(db: D1Database, subject: string, prefix: strin
   }[dimension] || "knowledge_tags";
 
   // 从 questions 表中提取标签并匹配前缀
-  const pattern = `%${prefix}%`;
+  const pattern = `%${query}%`;
   const sql = `
     SELECT ${dimColumn} as tag_value
     FROM questions q
     JOIN papers p ON q.paper_id = p.paper_id
     WHERE p.subject = ? AND q.${dimColumn} LIKE ? AND q.${dimColumn} IS NOT NULL AND q.${dimColumn} != '[]'
-    LIMIT 100
+    LIMIT 200
   `;
 
   const result = await db.prepare(sql).bind(subject, pattern).all();
 
-  // 提取并去重标签
-  const tagSet = new Set<string>();
+  // 提取标签并统计频率
+  const tagCounter = new Map<string, number>();
   for (const row of (result.results || []) as any[]) {
     const val = row.tag_value;
     if (!val) continue;
@@ -288,17 +345,26 @@ export async function suggestTags(db: D1Database, subject: string, prefix: strin
       const tags = dimension === "position" ? [val] : JSON.parse(val);
       if (Array.isArray(tags)) {
         for (const t of tags) {
-          if (t && t.toLowerCase().includes(prefix.toLowerCase()) && t !== "未分类") {
-            tagSet.add(t);
+          if (t && t.toLowerCase().includes(query.toLowerCase()) && t !== "未分类") {
+            tagCounter.set(t, (tagCounter.get(t) || 0) + 1);
           }
         }
       }
     } catch {
-      if (val && val.toLowerCase().includes(prefix.toLowerCase()) && val !== "未分类") {
-        tagSet.add(val);
+      if (val && val.toLowerCase().includes(query.toLowerCase()) && val !== "未分类") {
+        tagCounter.set(val, (tagCounter.get(val) || 0) + 1);
       }
     }
   }
 
-  return Array.from(tagSet).slice(0, limit).map(tag => ({ tag_name: tag, dimension }));
+  // 按频率排序
+  const sorted = Array.from(tagCounter.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, Math.min(limit, 20))
+    .map(([tag_name, count]) => ({ tag_name, count, dimension }));
+
+  // 缓存结果
+  await kv.put(cacheKey, JSON.stringify(sorted), { expirationTtl: 86400 });
+
+  return sorted;
 }
