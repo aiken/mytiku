@@ -533,7 +533,59 @@ def extract_pdf_questions(
     doc = fitz.open(pdf_path)
     all_text_blocks: List[Tuple[int, str]] = []  # (page_number, text)
 
-    # 1. 逐页提取文本
+    # 0. 检测 PDF 类型，扫描版使用 OCR
+    try:
+        from ocr_engine import detect_pdf_type, PDFType, extract_text_from_pdf
+        pdf_type = detect_pdf_type(pdf_path)
+        if pdf_type in (PDFType.IMAGE_ONLY, PDFType.MIXED):
+            logger.info(f"检测到扫描版 PDF ({pdf_type.value})，使用 OCR 提取文本: {pdf_path}")
+            ocr_text = extract_text_from_pdf(pdf_path, engine_type="auto")
+            all_text_blocks.append((1, ocr_text))
+            # 跳过逐页提取，直接使用 OCR 结果
+            doc.close()
+            # 继续处理（跳到合并全文步骤）
+            full_text = ocr_text
+            splits = split_by_question_number(full_text)
+            # ... 后续处理与正常流程相同
+            questions = []
+            image_paths = []
+            for q_num, q_text in splits:
+                difficulty = infer_difficulty(q_num)
+                q_type = infer_q_type(q_text)
+                position = infer_position(q_num)
+                options = extract_options(q_text)
+                answer = extract_answer(q_text)
+                score = infer_score(q_num, q_type)
+                tag_result = auto_tag(q_text, paper_meta.subject, q_num, difficulty, q_type)
+                all_tags = merge_tags(tag_result)
+                q_obj = ExtractedQuestion(
+                    question_id=build_question_id(paper_meta.paper_id, str(q_num)),
+                    paper_id=paper_meta.paper_id,
+                    question_number=str(q_num),
+                    q_type=q_type,
+                    position=position,
+                    score=score,
+                    difficulty=difficulty,
+                    content=q_text,
+                    options=options,
+                    answer=answer,
+                    tags=all_tags,
+                    images=[],
+                    estimated_time=score,
+                    knowledge_tags=tag_result["knowledge"],
+                    ability_tags=tag_result["ability"],
+                    feature_tags=tag_result["feature"],
+                    method_tags=tag_result["method"],
+                    position_tag=tag_result["position"],
+                )
+                questions.append(q_obj)
+            # 扫描版 PDF 的图片提取（OCR 后的图片处理较复杂，暂跳过）
+            logger.info(f"OCR 提取完成: {len(questions)} 题")
+            return questions, image_paths
+    except Exception as e:
+        logger.warning(f"OCR 检测/处理失败，回退到标准 PDF 提取: {e}")
+
+    # 1. 逐页提取文本（标准流程）
     for page_idx in range(len(doc)):
         page = doc.load_page(page_idx)
         text = page.get_text("text")
