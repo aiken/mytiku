@@ -41,6 +41,7 @@ except ImportError:
 
 from tag_rules import auto_tag, merge_tags, get_tag_summary
 from local_db import LocalDB
+from metadata_mappings import standardize_metadata
 
 
 # ----------------------------------------------------------------------
@@ -1165,6 +1166,10 @@ def process_single_file(
     district = infer_district(file_path)
     school = infer_school(file_path)
     exam_type = infer_exam_type(file_path)
+    
+    # 标准化元数据
+    district, school, exam_type = standardize_metadata(district, school, exam_type)
+    
     fhash = filename_hash(file_path)
     paper_id = build_paper_id(subject, str(year), region, exam_type, fhash)
 

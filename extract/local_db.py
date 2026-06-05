@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS papers (
     district TEXT,        -- 区名，如"海淀"
     school TEXT,          -- 学校名，如"北京四中"
     exam_type TEXT,
+    round TEXT,           -- 考试轮次：一模/二模/三模/真题/期中/期末/月考
     year INTEGER,
     total_score INTEGER DEFAULT 100,
     question_count INTEGER,
