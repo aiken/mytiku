@@ -200,6 +200,19 @@ def run_extraction(sample: List[Dict], db_path: str, output_dir: str) -> Dict:
         checkpoint_path.unlink()
         print("  已清理旧 checkpoint，确保重新抽取")
     
+    # 清理之前的数据库，确保从头开始
+    db_path = Path(output_dir) / "local.sqlite"
+    if db_path.exists():
+        db_path.unlink()
+        print("  已清理旧数据库，确保重新抽取")
+    
+    # 清理之前的统计文件
+    for f in ["extract_stats.json", "failed_files.json", "manual_review.json"]:
+        fp = Path(output_dir) / f
+        if fp.exists():
+            fp.unlink()
+            print(f"  已清理旧 {f}")
+    
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent.parent)
 
     # extract_all.py 输出数据库为 local.sqlite
