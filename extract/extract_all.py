@@ -494,15 +494,16 @@ def save_image(
     paper_id: str,
     question_number: int,
     fig_index: int,
-) -> str:
+    ext: str = "jpg",
+) -> Optional[str]:
     """
     保存处理后的图片，返回相对路径。
-    命名规则: {subject}_{paper_id}_q{question_number}_fig{fig_index}.jpg
+    命名规则: {subject}_{paper_id}_q{question_number}_fig{fig_index}.{ext}
     """
     img_dir = out_dir / IMAGE_DIR / subject
     img_dir.mkdir(parents=True, exist_ok=True)
 
-    filename = f"{subject}_{paper_id}_q{question_number}_fig{fig_index}.jpg"
+    filename = f"{subject}_{paper_id}_q{question_number}_fig{fig_index}.{ext}"
     filepath = img_dir / filename
     filepath.write_bytes(img_bytes)
     return str(filepath.relative_to(out_dir))
@@ -579,8 +580,49 @@ def extract_pdf_questions(
                     position_tag=tag_result["position"],
                 )
                 questions.append(q_obj)
-            # 扫描版 PDF 的图片提取（OCR 后的图片处理较复杂，暂跳过）
-            logger.info(f"OCR 提取完成: {len(questions)} 题")
+            # 扫描版 PDF 的图片提取：将页面渲染为图片
+            # 扫描版 PDF 的每一页本身就是图片，直接渲染保存
+            try:
+                doc_ocr = fitz.open(pdf_path)
+                fig_counter: Dict[int, int] = {}
+                for page_idx in range(len(doc_ocr)):
+                    page = doc_ocr.load_page(page_idx)
+                    # 渲染页面为图片 (150 DPI，平衡质量与大小)
+                    pix = page.get_pixmap(dpi=150)
+                    img_bytes = pix.tobytes("png")
+                    
+                    # 关联到该页最近题号（如果该页有题目）
+                    page_text = all_text_blocks[page_idx][1] if page_idx < len(all_text_blocks) else ""
+                    nearest_q = find_nearest_question_on_page(page_text, questions) if questions else 1
+                    if nearest_q is None:
+                        nearest_q = 1
+                    
+                    fig_idx = fig_counter.get(nearest_q, 1)
+                    fig_counter[nearest_q] = fig_idx + 1
+                    
+                    rel_path = save_image(
+                        img_bytes,
+                        out_dir,
+                        paper_meta.subject,
+                        paper_meta.paper_id,
+                        nearest_q,
+                        fig_idx,
+                        ext="png",
+                    )
+                    if rel_path:
+                        image_paths.append(rel_path)
+                        # 将图片路径附加到对应题目
+                        for q in questions:
+                            if q.question_number == str(nearest_q):
+                                q.images.append(rel_path)
+                                break
+                
+                doc_ocr.close()
+                logger.info(f"扫描版 PDF 图片提取完成: {len(image_paths)} 张")
+            except Exception as img_e:
+                logger.warning(f"扫描版 PDF 图片提取失败: {img_e}")
+            
+            logger.info(f"OCR 提取完成: {len(questions)} 题, {len(image_paths)} 张图")
             return questions, image_paths
     except Exception as e:
         logger.warning(f"OCR 检测/处理失败，回退到标准 PDF 提取: {e}")
