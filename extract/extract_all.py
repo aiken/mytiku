@@ -457,7 +457,12 @@ def extract_answer(text: str) -> Optional[str]:
     支持单选、多选（如 AB / ABD）、填空多空（用 / 或 ；分隔）。
     """
     raw = None
-    m = re.search(r'【答案】\s*([^\n【]+)', text)
+    # 支持跨段落的答案（如解答题多小问），捕获到下一个解析/知识点/题号标记为止
+    m = re.search(
+        r'【答案】\s*(.*?)(?=\n\s*(?:【解析】|【分析】|【详解】|【知识点】|\d+[\.．、\)]|第\d+题)|\Z)',
+        text,
+        re.DOTALL,
+    )
     if m:
         raw = m.group(1).strip()
     else:
@@ -762,6 +767,9 @@ def extract_pdf_questions(
         tag_result = auto_tag(content_without_options, paper_meta.subject, q_num, difficulty, q_type)
         all_tags = merge_tags(tag_result)
 
+        tables_for_q = table_map.get(str(q_num), [])
+        data_table = json.dumps(tables_for_q[0], ensure_ascii=False) if tables_for_q else None
+
         q_obj = ExtractedQuestion(
             question_id=build_question_id(paper_meta.paper_id, str(q_num)),
             paper_id=paper_meta.paper_id,
@@ -775,6 +783,7 @@ def extract_pdf_questions(
             answer=answer,
             tags=all_tags,
             images=[],
+            data_table=data_table,
             estimated_time=score,
             knowledge_tags=tag_result["knowledge"],
             ability_tags=tag_result["ability"],
@@ -1025,11 +1034,12 @@ def _omml_to_text(elem) -> str:
 
 
 def _paragraph_text_with_math(p) -> str:
-    """提取段落文本，包含 OMML 公式与上下标"""
+    """提取段落文本，包含 OMML 公式与上下标（可传 Paragraph 对象或 <w:p> 元素）"""
     from docx.oxml.ns import qn
 
+    p_elem = p._p if hasattr(p, "_p") else p
     texts = []
-    for child in p._p:
+    for child in p_elem:
         tag = child.tag
         if tag == qn("w:r"):
             rpr = child.find(qn("w:rPr"))
@@ -1085,6 +1095,32 @@ def extract_docx_questions(
             paragraphs.append(para_text)
     full_text = "\n".join(paragraphs)
 
+    # 提取表格并关联到最近题号
+    table_map: Dict[str, List[List[List[str]]]] = {}
+    try:
+        from docx.oxml.ns import qn
+
+        current_qnum: Optional[str] = None
+        for child in doc.element.body:
+            if child.tag == qn("w:p"):
+                para_text = _paragraph_text_with_math(child)
+                m = QUESTION_NUMBER_RE.search(para_text)
+                if m:
+                    current_qnum = str(int(m.group(1) or m.group(2)))
+            elif child.tag == qn("w:tbl") and current_qnum:
+                rows = []
+                for tr in child.findall(qn("w:tr")):
+                    row = []
+                    for tc in tr.findall(qn("w:tc")):
+                        cell_texts = []
+                        for p in tc.findall(qn("w:p")):
+                            cell_texts.append(_paragraph_text_with_math(p))
+                        row.append("\n".join(cell_texts).strip())
+                    rows.append(row)
+                table_map.setdefault(current_qnum, []).append(rows)
+    except Exception as e:
+        logger.warning(f"表格提取失败: {e}")
+
     # 解析版/含答案试卷：先分离题干与答案解析块
     question_text, answer_map = separate_answer_sections(full_text)
 
@@ -1105,6 +1141,9 @@ def extract_docx_questions(
         tag_result = auto_tag(content_without_options, paper_meta.subject, q_num, difficulty, q_type)
         all_tags = merge_tags(tag_result)
 
+        tables_for_q = table_map.get(str(q_num), [])
+        data_table = json.dumps(tables_for_q[0], ensure_ascii=False) if tables_for_q else None
+
         q_obj = ExtractedQuestion(
             question_id=build_question_id(paper_meta.paper_id, str(q_num)),
             paper_id=paper_meta.paper_id,
@@ -1118,6 +1157,7 @@ def extract_docx_questions(
             answer=answer,
             tags=all_tags,
             images=[],
+            data_table=data_table,
             estimated_time=score,
             knowledge_tags=tag_result["knowledge"],
             ability_tags=tag_result["ability"],

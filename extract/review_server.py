@@ -94,6 +94,9 @@ HTML_PAGE = """<!DOCTYPE html>
   .formula-preview { margin-top: 6px; padding: 8px; background: #f9f9f9; border: 1px dashed #ddd; border-radius: 4px; min-height: 24px; display: none; }
   .formula-preview sup { font-size: 0.75em; vertical-align: super; }
   .formula-preview sub { font-size: 0.75em; vertical-align: sub; }
+  .math-sqrt { display: inline-block; white-space: nowrap; }
+  .sqrt-symbol { font-size: 1.2em; margin-right: 1px; }
+  .sqrt-over { border-top: 1px solid #333; padding-top: 1px; }
   .tags-input { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .tags-input input { flex: 1; min-width: 120px; }
   .tag { background: #e3f2fd; padding: 2px 8px; border-radius: 12px; font-size: 12px; }
@@ -114,6 +117,9 @@ HTML_PAGE = """<!DOCTYPE html>
   .human-score { margin-top: 16px; padding-top: 16px; border-top: 1px solid #e0e0e0; }
   .human-score label { display: inline-block; font-size: 14px; font-weight: bold; margin-right: 8px; }
   .human-score .score-number { font-size: 20px; font-weight: bold; color: #1976d2; }
+  .data-table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  .data-table td, .data-table th { border: 1px solid #ddd; padding: 8px; text-align: center; }
+  .data-table tr:nth-child(even) { background: #f9f9f9; }
   .hidden { display: none; }
 </style>
 </head>
@@ -236,6 +242,14 @@ function renderQuestion() {
     try { q.tags = JSON.parse(q.tags); } catch (e) { q.tags = []; }
   }
   if (!Array.isArray(q.tags)) q.tags = [];
+  let dataTable = null;
+  if (q.data_table) {
+    if (typeof q.data_table === 'string') {
+      try { dataTable = JSON.parse(q.data_table); } catch (e) { dataTable = null; }
+    } else if (Array.isArray(q.data_table)) {
+      dataTable = q.data_table;
+    }
+  }
 
   const corr = review.corrections[q.question_id] || {};
   const isDeleted = review.deleted.includes(q.question_id);
@@ -257,6 +271,13 @@ function renderQuestion() {
     questionImages = q.images.slice(0, extra);
     optionImages = q.images.slice(extra);
   }
+
+  // 表格渲染
+  const tableHtml = (dataTable && dataTable.length)
+    ? '<div class="field"><label>数据表格</label><table class="data-table">' +
+        dataTable.map(row => '<tr>' + row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('') + '</tr>').join('') +
+      '</table></div>'
+    : '';
 
   // 图片渲染
   const imagesHtml = (questionImages && questionImages.length)
@@ -312,11 +333,13 @@ function renderQuestion() {
         <textarea id="content_${q.question_id}" onchange="onContentChange('${q.question_id}', this.value)">${escapeHtml(corr.content !== undefined ? corr.content : q.content)}</textarea>
         <div id="formula_preview_${q.question_id}" class="formula-preview"></div>
       </div>
+      ${tableHtml}
       ${imagesHtml}
       ${optionsHtml}
       <div class="field">
         <label>答案</label>
         <input type="text" value="${escapeHtml(corr.answer !== undefined ? corr.answer : (q.answer || ''))}" onchange="onAnswerChange('${q.question_id}', this.value)">
+        <div id="answer_preview_${q.question_id}" class="formula-preview"></div>
       </div>
       <div class="field">
         <label>解析</label>
@@ -340,6 +363,7 @@ function renderQuestion() {
     </div>
   `;
   renderFormulaPreview(q.question_id, corr.content !== undefined ? corr.content : q.content);
+  renderAnswerPreview(q.question_id, corr.answer !== undefined ? corr.answer : (q.answer || ''));
   renderSolutionPreview(q.question_id, corr.solution !== undefined ? corr.solution : (q.solution || ''));
   renderScore();
   } catch (e) {
@@ -355,17 +379,58 @@ function onContentChange(qid, value) {
     console.error('onContentChange error:', e);
   }
 }
-function onAnswerChange(qid, value) { ensureCorrection(qid); review.corrections[qid].answer = value; renderScore(); }
+function onAnswerChange(qid, value) { ensureCorrection(qid); review.corrections[qid].answer = value; renderAnswerPreview(qid, value); renderScore(); }
 
 function formulaToHtml(text) {
-  if (!text || (!text.includes('^') && !text.includes('~'))) return null;
-  return escapeHtml(text)
+  if (!text) return null;
+  const hasFormula = text.includes('^') || text.includes('~') || text.includes('sqrt(');
+  if (!hasFormula) return null;
+  let html = escapeHtml(text)
     .replace(/\^([^^\\n]+)\^/g, '<sup>$1</sup>')
     .replace(/~([^~\\n]+)~/g, '<sub>$1</sub>');
+  html = renderSqrt(html);
+  return html;
+}
+
+function renderSqrt(text) {
+  let result = '';
+  let i = 0;
+  while (i < text.length) {
+    const idx = text.indexOf('sqrt(', i);
+    if (idx === -1) {
+      result += text.slice(i);
+      break;
+    }
+    result += text.slice(i, idx);
+    let depth = 1;
+    let j = idx + 5;
+    while (j < text.length && depth > 0) {
+      if (text[j] === '(') depth++;
+      else if (text[j] === ')') depth--;
+      j++;
+    }
+    const inner = text.slice(idx + 5, j - 1);
+    result += `<span class="math-sqrt"><span class="sqrt-symbol">&radic;</span><span class="sqrt-over">${renderSqrt(inner)}</span></span>`;
+    i = j;
+  }
+  return result;
 }
 
 function renderFormulaPreview(qid, text) {
   const el = document.getElementById('formula_preview_' + qid);
+  if (!el) return;
+  const html = formulaToHtml(text);
+  if (html) {
+    el.innerHTML = html;
+    el.style.display = 'block';
+  } else {
+    el.innerHTML = '';
+    el.style.display = 'none';
+  }
+}
+
+function renderAnswerPreview(qid, text) {
+  const el = document.getElementById('answer_preview_' + qid);
   if (!el) return;
   const html = formulaToHtml(text);
   if (html) {
