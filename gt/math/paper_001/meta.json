@@ -1,0 +1,17 @@
+{
+  "paper_id": "math_2023_海淀区_模拟_math_paper_001",
+  "subject": "math",
+  "year": 2023,
+  "region": "北京",
+  "district": "海淀区",
+  "school": "未知",
+  "exam_type": "模拟",
+  "round": "一模",
+  "title": "2023年海淀区初三数学一模试卷",
+  "source_file": "2023海淀一模数学（原卷版）.pdf",
+  "total_score": 100,
+  "expected_question_count": 4,
+  "annotator": "system",
+  "annotated_at": "2026-06-14T23:00:00",
+  "notes": "示例 GT，用于验证质量循环框架"
+}

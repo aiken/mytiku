@@ -1,0 +1,17 @@
+{
+  "paper_id": "physics_2023_西城区_模拟_physics_paper_001",
+  "subject": "physics",
+  "year": 2023,
+  "region": "北京",
+  "district": "西城区",
+  "school": "未知",
+  "exam_type": "模拟",
+  "round": "二模",
+  "title": "2023年西城区初三物理二模试卷",
+  "source_file": "2023西城二模物理（原卷版）.pdf",
+  "total_score": 100,
+  "expected_question_count": 3,
+  "annotator": "system",
+  "annotated_at": "2026-06-14T23:00:00",
+  "notes": "示例 GT，用于验证质量循环框架"
+}

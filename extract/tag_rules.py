@@ -130,13 +130,13 @@ PHYSICS_KNOWLEDGE_RULES: List[Tuple[re.Pattern, List[str]]] = [
     (re.compile(r"速度|匀速|变速|平均速度|路程.*时间|s\s*=\s*vt"), ["运动学", "物理"]),
     
     # 实验探究
-    (re.compile(r"控制变量|自变量|因变量|控制.*不变|改变.*研究|多次测量"), ["控制变量", "实验方法"]),
-    (re.compile(r"实验.*设计|实验.*步骤|实验.*器材|实验.*结论|实验.*误差"), ["实验设计", "实验方法"]),
-    (re.compile(r"测量型实验|读数|估读|有效数字|误差分析"), ["测量型实验", "实验方法"]),
-    (re.compile(r"探究.*关系|探究.*因素|探究.*规律|猜想.*验证"), ["探究实验", "实验方法"]),
+    (re.compile(r"控制变量|自变量|因变量|控制.*不变|改变.*研究|多次测量"), ["控制变量", "实验探究"]),
+    (re.compile(r"实验.*设计|实验.*步骤|实验.*器材|实验.*结论|实验.*误差"), ["实验设计", "实验探究"]),
+    (re.compile(r"测量型实验|读数|估读|有效数字|误差分析"), ["测量型实验", "实验探究"]),
+    (re.compile(r"探究.*关系|探究.*因素|探究.*规律|猜想.*验证"), ["探究实验", "实验探究"]),
     
     # 科普阅读
-    (re.compile(r"科普.*阅读|阅读.*材料|根据.*短文|材料.*分析|信息.*提取"), ["科普阅读", "阅读"]),
+    (re.compile(r"科普.*阅读|阅读.*材料|根据.*短文|材料.*分析|信息.*提取"), ["科普阅读"]),
 ]
 
 
@@ -215,8 +215,8 @@ def infer_position_tag(question_number: int, difficulty: int, q_type: str) -> st
     elif question_number <= 15:
         return "中档题"
     elif question_number <= 22:
-        if q_type == "proof" or difficulty >= 3:
-            return "中档题"
+        if q_type in ("proof", "comprehensive") or difficulty >= 3:
+            return "综合题"
         return "中档题"
     elif question_number <= 26:
         return "综合题"
@@ -313,6 +313,32 @@ def auto_tag(content: str, subject: str, question_number: int = 0,
     for pattern, tags in METHOD_RULES:
         if pattern.search(content):
             method_tags.update(tags)
+    
+    # 5. 维度内互斥与冲突消解
+    # 5.1 feature 维度：单选题/填空题/解答题/证明题应互斥，以 q_type 为准
+    type_feature_map = {
+        "choice": "单选题",
+        "fill": "填空题",
+        "calculation": "解答题",
+        "proof": "证明题",
+        "experiment": "操作题",
+        "reading": "材料阅读题",
+    }
+    mutually_exclusive_features = {"单选题", "填空题", "解答题", "证明题", "操作题", "材料阅读题"}
+    if q_type in type_feature_map:
+        feature_tags -= mutually_exclusive_features
+        feature_tags.add(type_feature_map[q_type])
+    else:
+        # 未识别题型时，若同时命中多个互斥标签，只保留置信度最高（出现最早）的一个
+        if len(feature_tags & mutually_exclusive_features) > 1:
+            for tag in list(feature_tags & mutually_exclusive_features)[1:]:
+                feature_tags.discard(tag)
+    
+    # 5.2 ability 维度："空间想象"不应仅因"如图"触发，需配合几何/图形/坐标相关证据
+    if "空间想象" in ability_tags and "如图" in content:
+        if not (knowledge_tags & {"几何", "三角形", "四边形", "圆", "函数图像", "立体几何"}
+                or re.search(r"坐标系|几何图|旋转|翻折|折叠|三视图", content)):
+            ability_tags.discard("空间想象")
     
     # 如果方法标签为空，基于知识点推断常用方法
     if not method_tags and knowledge_tags and knowledge_tags != {"未分类"}:

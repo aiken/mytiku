@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExamBank Ground Truth Schema",
+  "description": "人工校对后的单张试卷标准数据格式",
+  "type": "object",
+  "required": ["paper_id", "subject", "year", "region", "district", "school", "exam_type", "round", "title", "questions"],
+  "properties": {
+    "paper_id": {
+      "type": "string",
+      "description": "试卷唯一标识"
+    },
+    "subject": {
+      "type": "string",
+      "enum": ["math", "physics"],
+      "description": "学科"
+    },
+    "year": {
+      "type": "integer",
+      "description": "年份"
+    },
+    "region": {
+      "type": "string",
+      "description": "城市"
+    },
+    "district": {
+      "type": "string",
+      "description": "区名"
+    },
+    "school": {
+      "type": "string",
+      "description": "学校名或区统考"
+    },
+    "exam_type": {
+      "type": "string",
+      "enum": ["期中", "期末", "月考", "模拟", "真题", "未知"],
+      "description": "考试类型"
+    },
+    "round": {
+      "type": "string",
+      "enum": ["一模", "二模", "三模", "四模", "真题", "期中", "期末", "月考", "段考", "模拟", "未知"],
+      "description": "考试轮次"
+    },
+    "title": {
+      "type": "string",
+      "description": "试卷标题"
+    },
+    "source_file": {
+      "type": "string",
+      "description": "原始文件名"
+    },
+    "total_score": {
+      "type": "integer",
+      "description": "总分"
+    },
+    "expected_question_count": {
+      "type": "integer",
+      "description": "人工统计的题目总数"
+    },
+    "annotator": {
+      "type": "string",
+      "description": "标注人"
+    },
+    "annotated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "标注时间"
+    },
+    "notes": {
+      "type": "string",
+      "description": "标注备注"
+    },
+    "questions": {
+      "type": "array",
+      "description": "题目列表",
+      "items": {
+        "type": "object",
+        "required": ["question_number", "content"],
+        "properties": {
+          "question_number": {
+            "type": "string",
+            "description": "题号，支持子题如 17(1)"
+          },
+          "parent_question_number": {
+            "type": "string",
+            "description": "父题题号（子题填写）"
+          },
+          "q_type": {
+            "type": "string",
+            "enum": ["choice", "fill", "calculation", "proof", "experiment", "reading", "comprehensive"],
+            "description": "题型"
+          },
+          "score": {
+            "type": "integer",
+            "description": "分值"
+          },
+          "content": {
+            "type": "string",
+            "description": "题干内容"
+          },
+          "options": {
+            "type": "array",
+            "description": "选择题选项",
+            "items": {
+              "type": "object",
+              "required": ["label", "text"],
+              "properties": {
+                "label": {"type": "string"},
+                "text": {"type": "string"}
+              }
+            }
+          },
+          "answer": {
+            "type": "string",
+            "description": "答案"
+          },
+          "solution": {
+            "type": "string",
+            "description": "解析"
+          },
+          "images": {
+            "type": "array",
+            "description": "题目关联图片文件名列表",
+            "items": {"type": "string"}
+          },
+          "data_table": {
+            "type": "string",
+            "description": "表格内容（Markdown 或文本）"
+          },
+          "knowledge_tags": {
+            "type": "array",
+            "description": "知识点标签",
+            "items": {"type": "string"}
+          },
+          "ability_tags": {
+            "type": "array",
+            "description": "能力维度标签",
+            "items": {"type": "string"}
+          },
+          "feature_tags": {
+            "type": "array",
+            "description": "题型特征标签",
+            "items": {"type": "string"}
+          },
+          "method_tags": {
+            "type": "array",
+            "description": "解题方法标签",
+            "items": {"type": "string"}
+          },
+          "position_tag": {
+            "type": "string",
+            "description": "考试定位标签"
+          }
+        }
+      }
+    }
+  }
+}

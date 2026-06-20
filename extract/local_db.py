@@ -22,6 +22,17 @@ from dataclasses import asdict
 logger = logging.getLogger("local_db")
 
 
+def _jsonify_field(value: Any) -> str:
+    """将字段序列化为 JSON 字符串；若已是 JSON 字符串则直接返回。"""
+    if isinstance(value, str):
+        try:
+            json.loads(value)
+            return value
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return json.dumps(value, ensure_ascii=False)
+
+
 # ----------------------------------------------------------------------
 # 建表 SQL（与 schema.sql 完全一致 + 本地优化索引）
 # ----------------------------------------------------------------------
@@ -207,19 +218,19 @@ class LocalDB:
                 q.get("score", 0),
                 q.get("difficulty", 2),
                 content,
-                json.dumps(q.get("options"), ensure_ascii=False) if q.get("options") else None,
+                _jsonify_field(q.get("options")) if q.get("options") else None,
                 q.get("answer"),
                 q.get("solution"),
-                json.dumps(all_tags, ensure_ascii=False),
-                json.dumps(images, ensure_ascii=False) if images else "[]",
-                json.dumps(q.get("data_table"), ensure_ascii=False) if q.get("data_table") else None,
+                _jsonify_field(all_tags),
+                _jsonify_field(images) if images else "[]",
+                _jsonify_field(q.get("data_table")) if q.get("data_table") else None,
                 q.get("estimated_time", 5),
-                json.dumps(knowledge_tags, ensure_ascii=False),
-                json.dumps(ability_tags, ensure_ascii=False),
-                json.dumps(feature_tags, ensure_ascii=False),
-                json.dumps(method_tags, ensure_ascii=False),
+                _jsonify_field(knowledge_tags),
+                _jsonify_field(ability_tags),
+                _jsonify_field(feature_tags),
+                _jsonify_field(method_tags),
                 position_tag,
-                json.dumps(source_tags, ensure_ascii=False),
+                _jsonify_field(source_tags),
                 len(all_tags),
                 has_image,
                 word_count,

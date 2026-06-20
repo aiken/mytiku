@@ -1,0 +1,50 @@
+[
+  {
+    "question_number": "1",
+    "q_type": "choice",
+    "score": 2,
+    "content": "下列现象中，属于光的反射的是（　　）",
+    "options": [
+      {"label": "A", "text": "水中倒影"},
+      {"label": "B", "text": "筷子在水中弯折"},
+      {"label": "C", "text": "彩虹"},
+      {"label": "D", "text": "小孔成像"}
+    ],
+    "answer": "A",
+    "solution": "水中倒影是平面镜成像，属于光的反射现象。",
+    "images": [],
+    "knowledge_tags": ["光的反射", "光学"],
+    "ability_tags": ["阅读理解"],
+    "feature_tags": ["单选题"],
+    "method_tags": [],
+    "position_tag": "基础题"
+  },
+  {
+    "question_number": "2",
+    "q_type": "fill",
+    "score": 2,
+    "content": "标准大气压下，水的沸点是 __________ ℃。",
+    "answer": "100",
+    "solution": "标准大气压下，水的沸点为 100 ℃。",
+    "images": [],
+    "knowledge_tags": ["物态变化", "热学"],
+    "ability_tags": ["计算能力"],
+    "feature_tags": ["填空题"],
+    "method_tags": [],
+    "position_tag": "基础题"
+  },
+  {
+    "question_number": "3",
+    "q_type": "experiment",
+    "score": 6,
+    "content": "小明用如图所示电路测量未知电阻 Rx 的阻值。闭合开关后，电压表示数为 2.4 V，电流表示数为 0.3 A，求 Rx 的阻值。",
+    "answer": "8 Ω",
+    "solution": "根据欧姆定律 \\( R = \\frac{U}{I} = \\frac{2.4\\ \text{V}}{0.3\\ \text{A}} = 8\\ \\Omega \\)。",
+    "images": ["circuit.png"],
+    "knowledge_tags": ["伏安法测电阻", "欧姆定律", "电学"],
+    "ability_tags": ["实验设计", "数据分析"],
+    "feature_tags": ["含图表", "操作题"],
+    "method_tags": ["数形结合"],
+    "position_tag": "中档题"
+  }
+]

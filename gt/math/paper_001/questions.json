@@ -1,0 +1,64 @@
+[
+  {
+    "question_number": "1",
+    "q_type": "choice",
+    "score": 3,
+    "content": "计算 \\( (-2)^2 \\) 的值。",
+    "options": [
+      {"label": "A", "text": "-4"},
+      {"label": "B", "text": "4"},
+      {"label": "C", "text": "-2"},
+      {"label": "D", "text": "2"}
+    ],
+    "answer": "B",
+    "solution": "负数的平方为正数，所以 \\( (-2)^2 = 4 \\)。",
+    "images": [],
+    "knowledge_tags": ["实数", "数与式"],
+    "ability_tags": ["计算能力"],
+    "feature_tags": ["单选题"],
+    "method_tags": [],
+    "position_tag": "基础题"
+  },
+  {
+    "question_number": "2",
+    "q_type": "fill",
+    "score": 2,
+    "content": "因式分解：\\( x^2 - 4 = \\) __________。",
+    "answer": "\\( (x+2)(x-2) \")",
+    "solution": "利用平方差公式 \\( a^2 - b^2 = (a+b)(a-b) \\)。",
+    "images": [],
+    "knowledge_tags": ["因式分解", "数与式"],
+    "ability_tags": ["计算能力"],
+    "feature_tags": ["填空题"],
+    "method_tags": [],
+    "position_tag": "基础题"
+  },
+  {
+    "question_number": "3",
+    "q_type": "calculation",
+    "score": 5,
+    "content": "如图，在平面直角坐标系中，点 A(1, 2)，点 B(3, 4)，求线段 AB 的长度。",
+    "answer": "\\( 2\\sqrt{2} \")",
+    "solution": "由两点间距离公式，\\( AB = \\sqrt{(3-1)^2 + (4-2)^2} = \\sqrt{8} = 2\\sqrt{2} \\)。",
+    "images": ["fig1.png"],
+    "knowledge_tags": ["函数图像", "函数"],
+    "ability_tags": ["计算能力", "空间想象"],
+    "feature_tags": ["含图表", "解答题"],
+    "method_tags": ["数形结合"],
+    "position_tag": "中档题"
+  },
+  {
+    "question_number": "4",
+    "q_type": "proof",
+    "score": 7,
+    "content": "如图，AB 是圆 O 的直径，C 是圆上一点，求证：\\( \\angle ACB = 90^\\circ \\)。",
+    "answer": "证明见解析",
+    "solution": "连接 OC。因为 OA=OC=OB，所以 \\( \\angle OAC = \\angle OCA \\)，\\( \\angle OBC = \\angle OCB \\)。由三角形内角和可得 \\( \\angle ACB = 90^\\circ \\)。",
+    "images": ["fig2.png"],
+    "knowledge_tags": ["圆的性质", "圆", "几何"],
+    "ability_tags": ["逻辑推理", "空间想象"],
+    "feature_tags": ["含图表", "证明题"],
+    "method_tags": ["构造法"],
+    "position_tag": "综合题"
+  }
+]

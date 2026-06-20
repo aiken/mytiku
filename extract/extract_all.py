@@ -53,20 +53,21 @@ MANUAL_REVIEW_FILE = "manual_review.json"
 SQL_DIR = "batch_sql"
 IMAGE_DIR = "images"
 
-# 题号正则：支持 "1. ", "1．", "1、", "(1)", "（1）", "第1题" 等
+# 题号正则：支持 "1. ", "1．", "1、", "1)", "第1题" 等
+# 注意：不支持 (1) / （1）/ ① / (A) 作为主题号，这些留给子题/选项识别
 QUESTION_NUMBER_RE = re.compile(
     r'^\s*(?:'
-    r'(\d+)[\.．、]\s*'           # 1.  1．  1、
+    r'(\d+)[\.．、\)]\s*'         # 1.  1．  1、  1)
     r'|'
     r'第\s*(\d+)\s*题'           # 第1题
     r')',
     re.MULTILINE
 )
 
-# 子题号正则：(1), （1）, ①, (i), （i）等
+# 子题号正则：仅匹配数字子题 (1), （1）, ①，避免把 (A)(B)(C)(D) 选项当子题
 SUB_QUESTION_RE = re.compile(
     r'^\s*(?:'
-    r'[\(（]([a-zA-Z0-9]+)[\)）]'  # (1), （a）
+    r'[\(（]([0-9]+)[\)）]'        # (1), （1）
     r'|'
     r'([①②③④⑤⑥⑦⑧⑨⑩])'         # ①
     r'|'
@@ -74,6 +75,21 @@ SUB_QUESTION_RE = re.compile(
     r')\s*',
     re.MULTILINE
 )
+
+# 噪声文本过滤正则：页眉页脚、考试说明、密封线、答题卡等
+NOISE_TEXT_PATTERNS = [
+    re.compile(r'本试卷共\s*\d+\s*页[，,、]?\s*共\s*\d+\s*分'),
+    re.compile(r'考试时间\s*\d+\s*分钟'),
+    re.compile(r'姓名[：:]\s*\S*\s*班级[：:]\s*\S*\s*考号[：:]'),
+    re.compile(r'准考证号|密封线|装订线|答题卡|注意事项'),
+    re.compile(r'第\s*\d+\s*页[，,、]?\s*共\s*\d+\s*页'),
+    re.compile(r'满分\s*\d+\s*分'),
+    re.compile(r'^\s*（本试卷'),
+    re.compile(r'^\s*学校[：:]\s*\S+\s*姓名'),
+]
+
+# 主题号最小内容长度（字符数），低于此长度视为噪声片段
+MIN_QUESTION_CONTENT_LENGTH = 20
 
 # 支持的文件扩展名
 SUPPORTED_EXTS = {".pdf", ".docx", ".doc"}
@@ -251,16 +267,25 @@ def infer_school(path_str: str) -> str:
             # 去掉"分校"后缀
             return school.replace("分校", "").strip()
     
-    # 5. 如果都没匹配到，返回区名作为学校（区统考卷）
-    district = infer_district(path_str)
-    if district != "未知":
-        return district + "统考"
+    # 5. 如果都没匹配到，不再无条件用区名兜底为“区统考”，避免学校字段虚高。
+    #    但当文件名明确包含“区”且为“期末/期中/模拟/统考/月考”时，可合理推断为区统考。
+    if re.search(r'区.*(?:期末|期中|模拟|统考|月考)|(?:期末|期中|模拟|统考|月考).*区', stem):
+        district = infer_district(path_str)
+        if district != "未知":
+            return district + "统考"
+    if "统考" in stem:
+        district = infer_district(path_str)
+        if district != "未知":
+            return district + "统考"
     
     return "未知"
 
 
 def infer_exam_type(path_str: str) -> str:
-    """推断考试类型"""
+    """
+    推断考试类型。
+    职责：只保留 期中/期末/月考/模拟/真题 五大类；具体轮次（一模/二模）交给 round。
+    """
     p = path_str.lower()
     if "期中" in p:
         return "期中"
@@ -268,8 +293,11 @@ def infer_exam_type(path_str: str) -> str:
         return "期末"
     if "月考" in p:
         return "月考"
-    if "模拟" in p or "中考" in p:
-        return "中考模拟"
+    # 一模/二模/三模 等具体轮次仍归类为 "模拟"，避免与 round 重复且失真
+    if "一模" in p or "二模" in p or "三模" in p or "四模" in p or "模拟" in p:
+        return "模拟"
+    if "中考" in p or "真题" in p or "中考试题" in p or "中考卷" in p:
+        return "真题"
     return "未知"
 
 
@@ -362,8 +390,11 @@ def infer_position(question_number: int) -> str:
     return "medium"
 
 
-def extract_options(text: str) -> Optional[str]:
-    """提取选择题选项，返回 JSON 字符串"""
+def extract_options(text: str) -> Tuple[Optional[str], str]:
+    """
+    提取选择题选项，返回 (JSON 字符串, 移除选项后的题干文本)。
+    支持 A. / A．/ A、/ A) / (A) / A 等多种格式，并允许选项跨最多 3 行。
+    """
     # 先移除答案/解析区域，避免误匹配
     clean_text = re.sub(r'【答案】.*', '', text, flags=re.DOTALL)
     clean_text = re.sub(r'【解析】.*', '', clean_text, flags=re.DOTALL)
@@ -371,28 +402,149 @@ def extract_options(text: str) -> Optional[str]:
     clean_text = re.sub(r'【详解】.*', '', clean_text, flags=re.DOTALL)
     clean_text = re.sub(r'【点睛】.*', '', clean_text, flags=re.DOTALL)
     
+    # 统一选项标号格式：把 (A)、A) 等变成 A.
+    normalized = re.sub(r'\(?([A-D])\)[\.．、\s]*', r'\1.', clean_text)
+    
+    # 按 A. B. C. D. 拆分，允许跨行（每个选项最多 400 字符或到下一个标号/答案标记）
     opts = []
-    for m in re.finditer(r'([A-D])[\.．、]\s*([^\nA-D【]{1,200})', clean_text):
+    pattern = re.compile(r'([A-D])[\.．、]\s*([^A-D【\n]{0,400}(?:\n[^A-D【\n]{0,200}){0,3})')
+    opt_ranges = []
+    for m in pattern.finditer(normalized):
         label = m.group(1)
         opt_text = m.group(2).strip()
-        # 过滤掉过短或纯标点的选项
-        if opt_text and len(opt_text) > 1 and not re.match(r'^[\s\.．、]+$', opt_text):
+        # 清理多余换行
+        opt_text = re.sub(r'\s+', ' ', opt_text)
+        # 保留有效文本选项；也保留空文本选项（可能为图片选项）
+        if opt_text and len(opt_text) >= 1 and not re.match(r'^[\s\.．、]+$', opt_text):
             opts.append({"label": label, "text": opt_text})
-    if len(opts) >= 2:
-        return json.dumps(opts, ensure_ascii=False)
-    return None
+        elif not opt_text:
+            opts.append({"label": label, "text": ""})
+        opt_ranges.append((m.start(), m.end()))
+    
+    # 从原始文本中移除选项部分（normalized 与原始 text 位置一致）
+    cleaned_text = text
+    if opt_ranges:
+        opt_ranges.sort()
+        merged = [opt_ranges[0]]
+        for s, e in opt_ranges[1:]:
+            if s <= merged[-1][1] + 1:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], e))
+            else:
+                merged.append((s, e))
+        cleaned_text = text[:merged[0][0]]
+        for i in range(len(merged) - 1):
+            cleaned_text += text[merged[i][1]:merged[i+1][0]]
+        cleaned_text += text[merged[-1][1]:]
+        cleaned_text = re.sub(r'\n\s*\n+', '\n', cleaned_text).strip()
+    
+    # 去重，按 A/B/C/D 顺序保留
+    seen = set()
+    ordered = []
+    for o in opts:
+        if o["label"] not in seen:
+            seen.add(o["label"])
+            ordered.append(o)
+    
+    options_json = None
+    if len(ordered) >= 2:
+        options_json = json.dumps(ordered, ensure_ascii=False)
+    return options_json, cleaned_text
 
 
 def extract_answer(text: str) -> Optional[str]:
-    """从文本中提取答案（【答案】标记）"""
+    """
+    从文本中提取答案（【答案】/答案：标记）。
+    支持单选、多选（如 AB / ABD）、填空多空（用 / 或 ；分隔）。
+    """
+    raw = None
     m = re.search(r'【答案】\s*([^\n【]+)', text)
     if m:
-        return m.group(1).strip()
-    # 备选："答案："格式
-    m = re.search(r'答案[：:]\s*([^\n]+)', text)
-    if m:
-        return m.group(1).strip()
-    return None
+        raw = m.group(1).strip()
+    else:
+        m = re.search(r'答案[：:]\s*([^\n]+)', text)
+        if m:
+            raw = m.group(1).strip()
+    if not raw:
+        return None
+    
+    # 多选答案规范化：去除空格、逗号，保留 A-D 字母序列
+    # 例如 "A B D" -> "ABD"，"A、B" -> "AB"
+    multi_match = re.match(r'^[\s,，、]*([A-D][\s,，、A-D]{0,7})[\s,，、]*$', raw)
+    if multi_match:
+        letters = re.findall(r'[A-D]', multi_match.group(1).upper())
+        if letters:
+            return "".join(letters)
+    return raw
+
+
+def extract_solution(text: str) -> Optional[str]:
+    """
+    从文本中提取解析/分析/详解。
+    支持 【解析】/【分析】/【详解】/解析：/分析： 等标记。
+    """
+    # 找到第一个解析类标记的位置
+    m = re.search(r'(?:【解析】|【分析】|【详解】|解析[：:]|分析[：:])', text)
+    if not m:
+        return None
+    solution = text[m.start():].strip()
+    # 移除段首的题号
+    solution = QUESTION_NUMBER_RE.sub('', solution, count=1).strip()
+    # 合并多余空行
+    solution = re.sub(r'\n\s*\n+', '\n', solution).strip()
+    return solution if len(solution) > 5 else None
+
+
+def separate_answer_sections(full_text: str) -> Tuple[str, Dict[str, Dict[str, str]]]:
+    """
+    在解析版/含答案试卷中，把题干和答案解析块分离开。
+    返回 (题干文本, answer_map)。
+    answer_map: {题号: {"answer": ..., "solution": ...}}
+    """
+    matches = list(QUESTION_NUMBER_RE.finditer(full_text))
+    if not matches:
+        return full_text, {}
+
+    answer_map: Dict[str, Dict[str, str]] = {}
+    question_segments: List[str] = []
+
+    for i, m in enumerate(matches):
+        q_num = int(m.group(1) or m.group(2))
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
+        segment = full_text[start:end].strip()
+        cleaned = clean_noise_text(segment)
+        if not cleaned:
+            continue
+
+        # 判断是否为答案解析块：题号后紧跟答案/解析标记，或充斥答案解析标记
+        first_line = cleaned.split('\n', 1)[0]
+        after_num = QUESTION_NUMBER_RE.sub('', first_line, count=1).strip()
+        marker_count = (
+            cleaned.count('【答案】')
+            + cleaned.count('【解析】')
+            + cleaned.count('【分析】')
+            + cleaned.count('【详解】')
+        )
+        is_answer_block = bool(
+            re.search(r'^(【答案】|【解析】|【分析】|【详解】|答案[：:]|解析[：:]|分析[：:])', after_num)
+            or marker_count >= 2
+        )
+
+        if is_answer_block:
+            answer = extract_answer(segment)
+            solution = extract_solution(segment)
+            key = str(q_num)
+            if key not in answer_map:
+                answer_map[key] = {}
+            if answer and not answer_map[key].get('answer'):
+                answer_map[key]['answer'] = answer
+            if solution and not answer_map[key].get('solution'):
+                answer_map[key]['solution'] = solution
+        else:
+            question_segments.append(segment)
+
+    question_text = '\n'.join(question_segments)
+    return question_text, answer_map
 
 
 def infer_score(question_number: int, q_type: str) -> int:
@@ -426,6 +578,41 @@ def sanitize_sql(text: str) -> str:
     if not text:
         return ""
     return text.replace("'", "''").replace("\\", "\\\\")
+
+
+def clean_noise_text(text: str) -> str:
+    """
+    清洗文本中的页眉页脚、考试说明、密封线等噪声。
+    返回清洗后的文本；若整段都是噪声，返回空字符串。
+    """
+    if not text:
+        return ""
+    lines = text.splitlines()
+    cleaned_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if any(p.search(stripped) for p in NOISE_TEXT_PATTERNS):
+            continue
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines).strip()
+
+
+def is_meaningful_content(text: str) -> bool:
+    """
+    判断一段文本是否为有意义的题目内容。
+    要求：长度达标、至少包含一个中文字符或数字或常见数学符号。
+    """
+    if not text:
+        return False
+    cleaned = clean_noise_text(text)
+    if len(cleaned) < MIN_QUESTION_CONTENT_LENGTH:
+        return False
+    # 至少包含中文字符、阿拉伯数字、或数学符号
+    if re.search(r'[\u4e00-\u9fa5]|[0-9]|[=+\-×÷√∠△⊙]|\b[a-zA-Z]\b', cleaned):
+        return True
+    return False
 
 
 # ----------------------------------------------------------------------
@@ -555,21 +742,24 @@ def extract_pdf_questions(
             text = page.get_text("text")
             all_text_blocks.append((page_idx + 1, text))
 
-    # 2. 合并全文，按题号拆分
+    # 2. 合并全文，分离题干与答案解析块，再按题号拆分
     full_text = "\n".join(t for _, t in all_text_blocks)
-    splits = split_by_question_number(full_text)
+    question_text, answer_map = separate_answer_sections(full_text)
+    splits = split_by_question_number(question_text)
 
     # 3. 逐题处理（OCR 和标准流程共享）
     for q_num, q_text in splits:
         difficulty = infer_difficulty(q_num)
-        q_type = infer_q_type(q_text)
+        # 从题干文本中移除题号（如 "10．"）
+        q_text_no_num = QUESTION_NUMBER_RE.sub('', q_text, count=1).strip()
+        q_type = infer_q_type(q_text_no_num)
         position = infer_position(q_num)
-        options = extract_options(q_text)
-        answer = extract_answer(q_text)
+        options, content_without_options = extract_options(q_text_no_num)
+        answer = extract_answer(q_text_no_num)
         score = infer_score(q_num, q_type)
         
         # 多维度自动标签
-        tag_result = auto_tag(q_text, paper_meta.subject, q_num, difficulty, q_type)
+        tag_result = auto_tag(content_without_options, paper_meta.subject, q_num, difficulty, q_type)
         all_tags = merge_tags(tag_result)
 
         q_obj = ExtractedQuestion(
@@ -580,7 +770,7 @@ def extract_pdf_questions(
             position=position,
             score=score,
             difficulty=difficulty,
-            content=q_text,
+            content=content_without_options,
             options=options,
             answer=answer,
             tags=all_tags,
@@ -719,6 +909,11 @@ def extract_pdf_questions(
         
         doc.close()
 
+    # 合并解析版中提取的答案/解析
+    if answer_map:
+        merge_answers_to_questions(questions, answer_map)
+        logger.info(f"PDF 合并答案/解析: {len(answer_map)} 题")
+
     logger.info(f"PDF 提取完成: {len(questions)} 题, {len(image_paths)} 张图")
     return questions, image_paths
 
@@ -726,10 +921,14 @@ def extract_pdf_questions(
 def split_by_question_number(text: str) -> List[Tuple[int, str]]:
     """
     按题号正则拆分全文，返回 [(题号, 题目文本), ...]。
+    拆分后会过滤掉噪声片段（页眉页脚、考试说明等）和过短/无意义片段。
     """
     matches = list(QUESTION_NUMBER_RE.finditer(text))
     if not matches:
-        return [(1, text.strip())]
+        cleaned = clean_noise_text(text)
+        if is_meaningful_content(cleaned):
+            return [(1, cleaned)]
+        return []
 
     result: List[Tuple[int, str]] = []
     for i, m in enumerate(matches):
@@ -738,7 +937,9 @@ def split_by_question_number(text: str) -> List[Tuple[int, str]]:
         start = m.start()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         segment = text[start:end].strip()
-        result.append((q_num, segment))
+        cleaned = clean_noise_text(segment)
+        if is_meaningful_content(cleaned):
+            result.append((q_num, cleaned))
     return result
 
 
@@ -746,6 +947,7 @@ def split_sub_questions(text: str) -> List[Dict]:
     """
     在一道题目内部按子题号拆分。
     返回 [{"sub_number": "1", "content": "..."}, ...]
+    过短或无意义的子题片段会被过滤掉。
     """
     matches = list(SUB_QUESTION_RE.finditer(text))
     if len(matches) <= 1:
@@ -757,7 +959,12 @@ def split_sub_questions(text: str) -> List[Dict]:
         start = m.start()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
         segment = text[start:end].strip()
-        subs.append({"sub_number": sub_num, "content": segment})
+        cleaned = clean_noise_text(segment)
+        # 子题最小长度放宽到 10，同时要求有效字符
+        if len(cleaned) >= 10 and re.search(
+            r'[\u4e00-\u9fa5]|[0-9]|[=+\-×÷√∠△⊙]|\b[a-zA-Z]{2,}\b', cleaned
+        ):
+            subs.append({"sub_number": sub_num, "content": segment})
     return subs
 
 
@@ -780,6 +987,71 @@ def find_nearest_question_on_page(page_text: str, questions: List[ExtractedQuest
 # ----------------------------------------------------------------------
 # Word 提取
 # ----------------------------------------------------------------------
+def _omml_to_text(elem) -> str:
+    """将 Word OMML 数学元素递归转换为纯文本（分数、上下标、根号等）"""
+    from docx.oxml.ns import qn
+
+    if elem is None:
+        return ""
+    parts = []
+    for child in elem:
+        tag = child.tag
+        if tag == qn("m:f"):
+            num = child.find(qn("m:num"))
+            den = child.find(qn("m:den"))
+            num_text = _omml_to_text(num)
+            den_text = _omml_to_text(den)
+            parts.append(f"({num_text})/({den_text})")
+        elif tag == qn("m:r"):
+            t = child.find(qn("m:t"))
+            if t is not None and t.text:
+                parts.append(t.text)
+        elif tag == qn("m:sup"):
+            parts.append(f"^{_omml_to_text(child)}^")
+        elif tag == qn("m:sub"):
+            parts.append(f"~{_omml_to_text(child)}~")
+        elif tag == qn("m:rad"):
+            deg = child.find(qn("m:deg"))
+            base = child.find(qn("m:e"))
+            deg_text = _omml_to_text(deg)
+            base_text = _omml_to_text(base)
+            if deg_text:
+                parts.append(f"[{deg_text}]sqrt({base_text})")
+            else:
+                parts.append(f"sqrt({base_text})")
+        else:
+            parts.append(_omml_to_text(child))
+    return "".join(parts)
+
+
+def _paragraph_text_with_math(p) -> str:
+    """提取段落文本，包含 OMML 公式与上下标"""
+    from docx.oxml.ns import qn
+
+    texts = []
+    for child in p._p:
+        tag = child.tag
+        if tag == qn("w:r"):
+            rpr = child.find(qn("w:rPr"))
+            is_super = False
+            is_sub = False
+            if rpr is not None:
+                vert = rpr.find(qn("w:vertAlign"))
+                if vert is not None:
+                    val = vert.get(qn("w:val"))
+                    is_super = val == "superscript"
+                    is_sub = val == "subscript"
+            t_text = "".join(t.text or "" for t in child.findall(qn("w:t")))
+            if is_super:
+                t_text = f"^{t_text}^"
+            elif is_sub:
+                t_text = f"~{t_text}~"
+            texts.append(t_text)
+        elif tag in (qn("m:oMath"), qn("m:oMathPara")):
+            texts.append(_omml_to_text(child))
+    return "".join(texts)
+
+
 def extract_docx_questions(
     docx_path: str,
     paper_meta: PaperMeta,
@@ -805,23 +1077,32 @@ def extract_docx_questions(
         logger.error(f"打开 Word 文件失败 {docx_path}: {e}")
         return questions, image_paths
 
-    # 提取所有段落文本
-    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+    # 提取所有段落文本，保留上标/下标标记，并转换 OMML 公式
+    paragraphs = []
+    for p in doc.paragraphs:
+        para_text = _paragraph_text_with_math(p)
+        if para_text.strip():
+            paragraphs.append(para_text)
     full_text = "\n".join(paragraphs)
 
+    # 解析版/含答案试卷：先分离题干与答案解析块
+    question_text, answer_map = separate_answer_sections(full_text)
+
     # 按题号拆分
-    splits = split_by_question_number(full_text)
+    splits = split_by_question_number(question_text)
 
     for q_num, q_text in splits:
         difficulty = infer_difficulty(q_num)
-        q_type = infer_q_type(q_text)
+        # 从题干文本中移除题号（如 "10．"）
+        q_text_no_num = QUESTION_NUMBER_RE.sub('', q_text, count=1).strip()
+        q_type = infer_q_type(q_text_no_num)
         position = infer_position(q_num)
-        options = extract_options(q_text)
-        answer = extract_answer(q_text)
+        options, content_without_options = extract_options(q_text_no_num)
+        answer = extract_answer(q_text_no_num)
         score = infer_score(q_num, q_type)
         
         # 多维度自动标签
-        tag_result = auto_tag(q_text, paper_meta.subject, q_num, difficulty, q_type)
+        tag_result = auto_tag(content_without_options, paper_meta.subject, q_num, difficulty, q_type)
         all_tags = merge_tags(tag_result)
 
         q_obj = ExtractedQuestion(
@@ -832,7 +1113,7 @@ def extract_docx_questions(
             position=position,
             score=score,
             difficulty=difficulty,
-            content=q_text,
+            content=content_without_options,
             options=options,
             answer=answer,
             tags=all_tags,
@@ -884,15 +1165,34 @@ def extract_docx_questions(
                 )
                 questions.append(sub_q_obj)
 
-    # Word 图片提取（python-docx 原生支持有限，尝试提取内嵌图）
-    fig_counter: Dict[int, int] = {}
+    # Word 图片提取：按段落 inline 图片提取，按最近题号归属
+    fig_counter: Dict[str, int] = {}
     try:
-        from docx.oxml import parse_xml
-        from docx.opc.constants import RELATIONSHIP_TYPE as RT
-        rels = doc.part.rels
-        for rel in rels.values():
-            if "image" in rel.reltype:
-                # 尝试获取图片数据
+        from docx.oxml.ns import qn
+
+        def _find_nearest_qnum(para_idx: int) -> Optional[str]:
+            """向前查找最近段落中的主题号"""
+            for i in range(para_idx, -1, -1):
+                text = doc.paragraphs[i].text
+                m = QUESTION_NUMBER_RE.search(text)
+                if m:
+                    return str(int(m.group(1) or m.group(2)))
+            return None
+
+        for para_idx, p in enumerate(doc.paragraphs):
+            blips = p._p.findall('.//' + qn('a:blip'))
+            if not blips:
+                continue
+            target_q = _find_nearest_qnum(para_idx)
+            if target_q is None:
+                continue
+            for blip in blips:
+                rId = blip.get(qn('r:embed'))
+                if not rId or rId not in doc.part.rels:
+                    continue
+                rel = doc.part.rels[rId]
+                if "image" not in rel.reltype:
+                    continue
                 try:
                     image_part = rel.target_part
                     image_bytes = image_part.blob
@@ -906,14 +1206,6 @@ def extract_docx_questions(
                 )
                 if processed is None:
                     continue
-
-                # Word 图片难以精确定位题号，默认归到第1题或轮询
-                # 简单策略：按出现顺序分配给已有题目
-                target_q = 1
-                if questions:
-                    # 轮询分配
-                    idx = len(image_paths) % len(questions)
-                    target_q = questions[idx].question_number
 
                 fig_idx = fig_counter.get(target_q, 1)
                 fig_counter[target_q] = fig_idx + 1
@@ -934,6 +1226,11 @@ def extract_docx_questions(
                         break
     except Exception as e:
         logger.warning(f"Word 图片提取异常: {e}")
+
+    # 合并解析版中提取的答案/解析
+    if answer_map:
+        merge_answers_to_questions(questions, answer_map)
+        logger.info(f"Word 合并答案/解析: {len(answer_map)} 题")
 
     return questions, image_paths
 
@@ -1119,6 +1416,17 @@ def find_paired_files(all_files: List[str]) -> List[Tuple[str, Optional[str]]]:
     for dir_path, files in dir_files.items():
         originals = [f for f in files if is_original_file(Path(f).stem)]
         answers = [f for f in files if is_answer_file(Path(f).stem)]
+
+        # 降级策略：如果目录中只有解析版/答案版而没有原卷版，
+        # 把解析版当作原卷版处理（解析版通常也包含完整题目和答案）
+        if not originals and answers:
+            import logging
+            logging.getLogger("extract_all").warning(
+                f"目录中仅有解析版/答案版文件，将其作为原卷处理: {dir_path}"
+            )
+            for ans in answers:
+                paired.append((ans, ans))  # 自身作为解析版，用于末尾答案提取
+            continue
 
         if not answers:
             for orig in originals:
@@ -1497,15 +1805,34 @@ def merge_answers_to_questions(
 ) -> None:
     """
     将解析版提取的答案/解析合并到题目列表中（按题号匹配，原地修改）。
+    子题会继承父题的 solution/answer（若自身未匹配到）。
     """
+    # 先按主题号合并
+    parent_solutions: Dict[str, Dict[str, str]] = {}
     for q in questions:
         q_num = str(q.question_number)
+        # 主题号
         if q_num in answer_map:
             info = answer_map[q_num]
             if info.get("answer"):
                 q.answer = info["answer"]
             if info.get("solution"):
                 q.solution = info["solution"]
+            parent_solutions[q_num] = info
+
+    # 子题继承父题答案/解析
+    for q in questions:
+        q_num = str(q.question_number)
+        if q_num in answer_map:
+            continue
+        parent_qn = q_num.split("(")[0].split("_")[0]
+        if parent_qn == q_num:
+            continue
+        info = parent_solutions.get(parent_qn) or answer_map.get(parent_qn, {})
+        if info.get("solution") and not q.solution:
+            q.solution = info["solution"]
+        if info.get("answer") and not q.answer:
+            q.answer = info["answer"]
 
 
 # ----------------------------------------------------------------------
@@ -1540,14 +1867,24 @@ def process_single_file(
     path_obj = Path(file_path)
     ext = path_obj.suffix.lower()
 
-    # 跳过解析版/答案版文件（只提取原卷）
+    # 跳过独立的解析版/答案版文件（只提取原卷）。
+    # 例外：当目录中只有解析版、没有原卷时，解析版被当作原卷处理，此时不跳过。
     stem_lower = path_obj.stem.lower()
-    if any(k in stem_lower for k in ["解析版", "答案版", "解答版", "参考答案", "答案解析"]):
+    is_answer_named = any(k in stem_lower for k in ["解析版", "答案版", "解答版", "参考答案", "答案解析"])
+    if is_answer_named and answer_file_path and answer_file_path != file_path:
         result["error"] = "跳过解析版文件"
         return result
 
     if ext not in SUPPORTED_EXTS:
         result["error"] = f"不支持的文件类型: {ext}"
+        return result
+
+    # 依赖可用性检查
+    if ext == ".pdf" and fitz is None:
+        result["error"] = "PyMuPDF (fitz) 未安装，无法处理 PDF"
+        return result
+    if ext in (".docx", ".doc") and Document is None:
+        result["error"] = "python-docx 未安装，无法处理 Word"
         return result
 
     # 构建元数据
@@ -1684,6 +2021,86 @@ def save_manual_review(out_dir: Path, reviews: List[Dict]):
     fp.write_text(json.dumps(reviews, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def health_check_paper(paper: Dict, questions: List[Dict]) -> List[str]:
+    """
+    对单份试卷的提取结果做健康检查，返回问题原因列表。
+    空列表表示通过健康检查。
+    """
+    issues: List[str] = []
+    if not questions:
+        issues.append("未提取到任何题目")
+        return issues
+
+    q_count = len(questions)
+    if q_count == 0 or q_count > 50:
+        issues.append(f"题目数量异常: {q_count}")
+
+    # 主题号连续性检查（过滤子题号带括号的）
+    main_numbers = []
+    for q in questions:
+        qn = str(q.get("question_number", ""))
+        try:
+            main_numbers.append(int(qn.split("(")[0].split("_")[0]))
+        except (ValueError, TypeError):
+            continue
+    main_numbers = sorted(set(main_numbers))
+    if main_numbers:
+        jumps = sum(1 for i in range(1, len(main_numbers)) if main_numbers[i] - main_numbers[i - 1] > 1)
+        if jumps > 3:
+            issues.append(f"主题号跳号过多: {jumps} 处")
+
+    # 空内容率
+    empty_count = sum(1 for q in questions if not q.get("content") or len(q.get("content", "").strip()) < 10)
+    if empty_count / q_count > 0.1:
+        issues.append(f"空内容题目比例过高: {empty_count}/{q_count}")
+
+    # 答案覆盖率
+    has_answer = sum(1 for q in questions if q.get("answer") or q.get("solution"))
+    if q_count > 0 and has_answer / q_count < 0.5:
+        issues.append(f"答案/解析覆盖率过低: {has_answer}/{q_count}")
+
+    # 元数据质量
+    meta_unknown = sum(1 for k in ["district", "school", "exam_type"] if paper.get(k) == "未知")
+    if meta_unknown >= 2:
+        issues.append(f"元数据缺失过多: {meta_unknown}/3 个未知")
+
+    return issues
+
+
+def quality_gate(db: LocalDB, logger: logging.Logger) -> Dict:
+    """
+    在导出 SQL 前执行质量门禁。
+    返回 {"passed": bool, "metrics": {...}, "issues": [...]}。
+    """
+    stats = db.get_stats()
+    issues: List[str] = []
+    metrics = {
+        "paper_count": stats.get("paper_count", 0),
+        "question_count": stats.get("question_count", 0),
+        "untagged_rate": stats.get("untagged_rate", 100.0),
+        "no_image_rate": stats.get("no_image_rate", 100.0),
+    }
+
+    q_count = metrics["question_count"]
+    if q_count == 0:
+        issues.append("数据库中没有任何题目")
+    else:
+        if stats.get("untagged_rate", 0) > 5:
+            issues.append(f"无标签题目比例过高: {stats['untagged_rate']:.1f}%")
+
+    logger.info("=" * 50)
+    logger.info("质量门禁检查")
+    for k, v in metrics.items():
+        logger.info(f"  {k}: {v}")
+    if issues:
+        logger.warning(f"质量门禁未通过: {'; '.join(issues)}")
+    else:
+        logger.info("质量门禁通过")
+    logger.info("=" * 50)
+
+    return {"passed": len(issues) == 0, "metrics": metrics, "issues": issues}
+
+
 # ----------------------------------------------------------------------
 # 主流程
 # ----------------------------------------------------------------------
@@ -1733,7 +2150,11 @@ def main():
     # 配对原卷版与解析版
     paired_files = find_paired_files(all_files)
     paired_count = sum(1 for _, ans in paired_files if ans is not None)
-    logger.info(f"文件配对完成: {len(paired_files)} 份原卷, {paired_count} 份有对应解析版 ({paired_count / len(paired_files) * 100:.1f}%)")
+    if paired_files:
+        logger.info(f"文件配对完成: {len(paired_files)} 份原卷, {paired_count} 份有对应解析版 ({paired_count / len(paired_files) * 100:.1f}%)")
+    else:
+        logger.warning("没有匹配到任何待处理文件，请检查文件名是否包含原卷版/解析版/试题/试卷等关键词")
+        sys.exit(0)
 
     # 加载断点（以原卷版路径为准）
     checkpoint = load_checkpoint(out_dir)
@@ -1758,7 +2179,7 @@ def main():
     logger.info(f"启动 {max_workers} 个 worker 进程")
 
     processed_since_checkpoint = 0
-    CHECKPOINT_INTERVAL = 100
+    CHECKPOINT_INTERVAL = 25
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         future_to_pair = {
@@ -1826,13 +2247,13 @@ def main():
                     f"已写入 SQLite"
                 )
 
-                # 若题目数异常（如0题或过多），标记人工复核
-                q_count = len(qs)
-                if q_count == 0 or q_count > 50:
+                # 健康检查：把异常试卷加入人工复核队列
+                issues = health_check_paper(res.get("paper", {}), qs)
+                if issues:
                     all_manual.append({
                         "file": orig_path,
-                        "reason": f"题目数量异常: {q_count}",
-                        "questions": q_count,
+                        "reason": "; ".join(issues),
+                        "questions": len(qs),
                     })
             else:
                 all_failed.append({"file": orig_path, "error": res.get("error")})
@@ -1847,7 +2268,7 @@ def main():
                 })
                 db.commit()
 
-            # 每 100 文件保存断点
+            # 每 25 文件保存断点，降低状态丢失风险
             if processed_since_checkpoint >= CHECKPOINT_INTERVAL:
                 checkpoint["processed"] = sorted(processed_set)
                 save_checkpoint(out_dir, checkpoint)
@@ -1855,12 +2276,11 @@ def main():
                 save_manual_review(out_dir, all_manual)
                 logger.info(f"断点已保存（已处理 {len(processed_set)} 个文件）")
                 processed_since_checkpoint = 0
-                checkpoint["processed"] = sorted(processed_set)
-                save_checkpoint(out_dir, checkpoint)
-                save_failed_files(out_dir, all_failed)
-                save_manual_review(out_dir, all_manual)
-                logger.info(f"断点已保存（已处理 {len(processed_set)} 个文件）")
-                processed_since_checkpoint = 0
+
+    # 质量门禁：导出 SQL 前检查关键指标
+    gate = quality_gate(db, logger)
+    gate_path = out_dir / "quality_gate.json"
+    gate_path.write_text(json.dumps(gate, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # 最终：从 SQLite 导出 SQL 文件
     logger.info("正在从 SQLite 导出 SQL 文件...")

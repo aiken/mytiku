@@ -3,22 +3,51 @@ INSERT OR IGNORE INTO tags (tag_id, tag_name, subject, tag_level, parent_id, tag
 ('math', '数学', 'math', 1, NULL, 'math'),
 ('math_algebra', '代数', 'math', 2, 'math', 'math/algebra'),
 ('math_number', '数与式', 'math', 3, 'math_algebra', 'math/algebra/number'),
+('math_scientific', '科学记数法', 'math', 3, 'math_number', 'math/algebra/number/scientific'),
+('math_real', '实数', 'math', 3, 'math_number', 'math/algebra/number/real'),
+('math_polynomial', '整式', 'math', 3, 'math_number', 'math/algebra/number/polynomial'),
+('math_factor', '因式分解', 'math', 3, 'math_number', 'math/algebra/number/factor'),
+('math_fraction', '分式', 'math', 3, 'math_number', 'math/algebra/number/fraction'),
+('math_radical', '二次根式', 'math', 3, 'math_number', 'math/algebra/number/radical'),
 ('math_equation', '方程不等式', 'math', 3, 'math_algebra', 'math/algebra/equation'),
+('math_linear_eq', '一元一次方程', 'math', 3, 'math_equation', 'math/algebra/equation/linear_eq'),
+('math_system_eq', '二元一次方程组', 'math', 3, 'math_equation', 'math/algebra/equation/system_eq'),
+('math_quadratic_eq', '一元二次方程', 'math', 3, 'math_equation', 'math/algebra/equation/quadratic_eq'),
+('math_fraction_eq', '分式方程', 'math', 3, 'math_equation', 'math/algebra/equation/fraction_eq'),
+('math_inequality', '不等式', 'math', 3, 'math_equation', 'math/algebra/equation/inequality'),
 ('math_function', '函数', 'math', 2, 'math', 'math/function'),
 ('math_linear', '一次函数', 'math', 3, 'math_function', 'math/function/linear'),
 ('math_inverse', '反比例函数', 'math', 3, 'math_function', 'math/function/inverse'),
 ('math_quadratic', '二次函数', 'math', 3, 'math_function', 'math/function/quadratic'),
+('math_function_graph', '函数图像', 'math', 3, 'math_function', 'math/function/function_graph'),
 ('math_geometry', '几何', 'math', 2, 'math', 'math/geometry'),
 ('math_triangle', '三角形', 'math', 3, 'math_geometry', 'math/geometry/triangle'),
+('math_triangle_congruent', '全等三角形', 'math', 3, 'math_triangle', 'math/geometry/triangle/congruent'),
+('math_triangle_similar', '相似三角形', 'math', 3, 'math_triangle', 'math/geometry/triangle/similar'),
+('math_triangle_special', '特殊三角形', 'math', 3, 'math_triangle', 'math/geometry/triangle/special'),
+('math_triangle_property', '三角形性质', 'math', 3, 'math_triangle', 'math/geometry/triangle/property'),
+('math_triangle_trig', '解直角三角形', 'math', 3, 'math_triangle', 'math/geometry/triangle/trig'),
 ('math_quadrilateral', '四边形', 'math', 3, 'math_geometry', 'math/geometry/quadrilateral'),
+('math_polygon', '多边形', 'math', 3, 'math_geometry', 'math/geometry/polygon'),
 ('math_circle', '圆', 'math', 3, 'math_geometry', 'math/geometry/circle'),
+('math_circle_property', '圆的性质', 'math', 3, 'math_circle', 'math/geometry/circle/property'),
+('math_circle_tangent', '圆的切线', 'math', 3, 'math_circle', 'math/geometry/circle/tangent'),
+('math_circle_polygon', '圆与多边形', 'math', 3, 'math_circle', 'math/geometry/circle/polygon'),
 ('math_similar', '相似', 'math', 3, 'math_geometry', 'math/geometry/similar'),
+('math_construction', '尺规作图', 'math', 3, 'math_geometry', 'math/geometry/construction'),
+('math_transform', '图形变换', 'math', 3, 'math_geometry', 'math/geometry/transform'),
+('math_solid', '立体几何', 'math', 3, 'math_geometry', 'math/geometry/solid'),
+('math_basic_geometry', '基础几何', 'math', 3, 'math_geometry', 'math/geometry/basic_geometry'),
 ('math_statistics', '统计概率', 'math', 2, 'math', 'math/statistics'),
+('math_stat_data', '统计', 'math', 3, 'math_statistics', 'math/statistics/stat_data'),
+('math_data_analysis', '数据分析', 'math', 3, 'math_statistics', 'math/statistics/data_analysis'),
+('math_probability', '概率', 'math', 3, 'math_statistics', 'math/statistics/probability'),
+('math_sampling', '抽样调查', 'math', 3, 'math_statistics', 'math/statistics/sampling'),
+('math_stat_chart', '统计图表', 'math', 3, 'math_statistics', 'math/statistics/stat_chart'),
 ('math_comprehensive', '综合', 'math', 2, 'math', 'math/comprehensive'),
 ('math_existence', '存在性最值', 'math', 3, 'math_comprehensive', 'math/comprehensive/existence'),
 ('math_newdef', '新定义', 'math', 3, 'math_comprehensive', 'math/comprehensive/newdef'),
-('math_transform', '图形变换', 'math', 3, 'math_geometry', 'math/geometry/transform'),
-('math_solid', '立体几何', 'math', 3, 'math_geometry', 'math/geometry/solid');
+('math_dynamic', '动态几何', 'math', 3, 'math_comprehensive', 'math/comprehensive/dynamic');
 
 -- 物理 — 知识点标签
 INSERT OR IGNORE INTO tags (tag_id, tag_name, subject, tag_level, parent_id, tag_path) VALUES
@@ -29,12 +58,14 @@ INSERT OR IGNORE INTO tags (tag_id, tag_name, subject, tag_level, parent_id, tag
 ('physics_pressure', '压强', 'physics', 3, 'physics_mechanics', 'physics/mechanics/pressure'),
 ('physics_lever', '杠杆', 'physics', 3, 'physics_mechanics', 'physics/mechanics/lever'),
 ('physics_efficiency', '机械效率', 'physics', 3, 'physics_mechanics', 'physics/mechanics/efficiency'),
+('physics_pulley', '滑轮组', 'physics', 3, 'physics_mechanics', 'physics/mechanics/pulley'),
 ('physics_density', '密度测量', 'physics', 3, 'physics_mechanics', 'physics/mechanics/density'),
 ('physics_force', '力的概念', 'physics', 3, 'physics_mechanics', 'physics/mechanics/force'),
 ('physics_newton', '牛顿定律', 'physics', 3, 'physics_mechanics', 'physics/mechanics/newton'),
 ('physics_work', '功和功率', 'physics', 3, 'physics_mechanics', 'physics/mechanics/work'),
 ('physics_electricity', '电学', 'physics', 2, 'physics', 'physics/electricity'),
 ('physics_ohms', '欧姆定律', 'physics', 3, 'physics_electricity', 'physics/electricity/ohms'),
+('physics_volt_amp', '伏安法测电阻', 'physics', 3, 'physics_electricity', 'physics/electricity/volt_amp'),
 ('physics_power', '电功率', 'physics', 3, 'physics_electricity', 'physics/electricity/power'),
 ('physics_circuit', '电路分析', 'physics', 3, 'physics_electricity', 'physics/electricity/circuit'),
 ('physics_resistance', '电阻', 'physics', 3, 'physics_electricity', 'physics/electricity/resistance'),
@@ -108,7 +139,13 @@ INSERT OR IGNORE INTO tags (tag_id, tag_name, subject, tag_level, parent_id, tag
 ('method_elim', '排除法', NULL, 2, 'method', 'method/elim'),
 ('method_induct', '归纳法', NULL, 2, 'method', 'method/induct'),
 ('method_symmetry', '对称法', NULL, 2, 'method', 'method/symmetry'),
-('method_area', '面积法', NULL, 2, 'method', 'method/area');
+('method_area', '面积法', NULL, 2, 'method', 'method/area'),
+('method_formula', '公式法', NULL, 2, 'method', 'method/formula'),
+('method_list', '列举法', NULL, 2, 'method', 'method/list');
+
+-- 特殊标记标签
+INSERT OR IGNORE INTO tags (tag_id, tag_name, subject, tag_level, parent_id, tag_path) VALUES
+('feature_uncategorized', '未分类', NULL, 2, 'feature', 'feature/uncategorized');
 
 -- 考试定位标签（跨学科）
 INSERT OR IGNORE INTO tags (tag_id, tag_name, subject, tag_level, parent_id, tag_path) VALUES
