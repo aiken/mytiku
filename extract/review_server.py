@@ -170,6 +170,8 @@ async function init() {
   renderMeta();
   renderScore();
   renderQuestion();
+  // KaTeX 是 defer 加载，首次渲染可能还没准备好，页面 load 后再刷一次
+  window.addEventListener('load', () => renderQuestion());
 }
 
 async function loadReviewFromServer() {
@@ -408,7 +410,41 @@ function toLatexMath(text) {
   while (changed) {
     changed = false;
 
-    // 分数 (a)/(b)，从内到外处理
+    // 上标 ^x^，支持多位底数如 2x^2^、BB^'^
+    text = text.replace(/([a-zA-Z0-9)\]}′']+|\([^()]*\))\^([^^\\n]+)\^/g, (m, base, exp) => {
+      changed = true;
+      return addPlaceholder(`${base}^{${exp}}`);
+    });
+
+    // 下标 ~x~
+    text = text.replace(/([a-zA-Z0-9)\]}′']+|\([^()]*\))\~([^~\\n]+)\~/g, (m, base, sub) => {
+      changed = true;
+      return addPlaceholder(`${base}_{${sub}}`);
+    });
+
+    // sqrt(x)，内层优先
+    let si = 0;
+    while (si < text.length) {
+      const idx = text.indexOf('sqrt(', si);
+      if (idx === -1) break;
+      let depth = 1;
+      let j = idx + 5;
+      while (j < text.length && depth > 0) {
+        if (text[j] === '(') depth++;
+        else if (text[j] === ')') depth--;
+        j++;
+      }
+      const inner = text.slice(idx + 5, j - 1);
+      if (!inner.includes('sqrt(')) {
+        text = text.slice(0, idx) + addPlaceholder(`\\sqrt{${inner}}`) + text.slice(j);
+        changed = true;
+        si = idx + 1;
+      } else {
+        si = j;
+      }
+    }
+
+    // 分数 (a)/(b)，内层优先
     let fi = 0;
     while (fi < text.length) {
       const divIdx = text.indexOf(')/(', fi);
@@ -445,45 +481,15 @@ function toLatexMath(text) {
         fi = end + 1;
       }
     }
-
-    // sqrt(x)，内层优先
-    let si = 0;
-    while (si < text.length) {
-      const idx = text.indexOf('sqrt(', si);
-      if (idx === -1) break;
-      let depth = 1;
-      let j = idx + 5;
-      while (j < text.length && depth > 0) {
-        if (text[j] === '(') depth++;
-        else if (text[j] === ')') depth--;
-        j++;
-      }
-      const inner = text.slice(idx + 5, j - 1);
-      if (!inner.includes('sqrt(')) {
-        text = text.slice(0, idx) + addPlaceholder(`\\sqrt{${inner}}`) + text.slice(j);
-        changed = true;
-        si = idx + 1;
-      } else {
-        si = j;
-      }
-    }
-
-    // 上标 ^x^，内层优先
-    text = text.replace(/([a-zA-Z0-9)\]}′']|\([^()]*\))\^([^^\\n]+)\^/g, (m, base, exp) => {
-      changed = true;
-      return addPlaceholder(`${base}^{${exp}}`);
-    });
-
-    // 下标 ~x~，内层优先
-    text = text.replace(/([a-zA-Z0-9)\]}′']|\([^()]*\))\~([^~\\n]+)\~/g, (m, base, sub) => {
-      changed = true;
-      return addPlaceholder(`${base}_{${sub}}`);
-    });
   }
 
-  placeholders.forEach((latex, idx) => {
-    text = text.split(`__MATH_${idx}__`).join(`$${latex}$`);
-  });
+  // 递归展开占位符：外层加 $...$，内层不加
+  function expandPlaceholder(idx, inMath) {
+    let latex = placeholders[idx];
+    latex = latex.replace(/__MATH_(\d+)__/g, (m, n) => expandPlaceholder(parseInt(n), true));
+    return inMath ? latex : `$${latex}$`;
+  }
+  text = text.replace(/__MATH_(\d+)__/g, (m, idx) => expandPlaceholder(parseInt(idx), false));
   return text;
 }
 
