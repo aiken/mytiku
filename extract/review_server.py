@@ -469,13 +469,13 @@ function toLatexMath(text) {
     }
 
     // 上标 ^x^，内层优先
-    text = text.replace(/([a-zA-Z0-9)\]}′']|\([^()]*\))\^([^^\n]+)\^/g, (m, base, exp) => {
+    text = text.replace(/([a-zA-Z0-9)\]}′']|\([^()]*\))\^([^^\\n]+)\^/g, (m, base, exp) => {
       changed = true;
       return addPlaceholder(`${base}^{${exp}}`);
     });
 
     // 下标 ~x~，内层优先
-    text = text.replace(/([a-zA-Z0-9)\]}′']|\([^()]*\))\~([^~\n]+)\~/g, (m, base, sub) => {
+    text = text.replace(/([a-zA-Z0-9)\]}′']|\([^()]*\))\~([^~\\n]+)\~/g, (m, base, sub) => {
       changed = true;
       return addPlaceholder(`${base}_{${sub}}`);
     });
