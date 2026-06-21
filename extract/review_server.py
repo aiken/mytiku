@@ -122,6 +122,9 @@ HTML_PAGE = """<!DOCTYPE html>
   .data-table tr:nth-child(even) { background: #f9f9f9; }
   .hidden { display: none; }
 </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
   <div class="toolbar">
@@ -292,9 +295,8 @@ function renderQuestion() {
       q.options.map((opt, i) => {
         const label = escapeHtml(opt.label || String.fromCharCode(65 + i));
         const textVal = opt.text !== undefined ? opt.text : opt;
-        const optFormulaHtml = formulaToHtml(textVal);
-        const optFormulaBlock = optFormulaHtml
-          ? `<div class="formula-preview option-formula" style="display:block;margin-top:4px;">${optFormulaHtml}</div>`
+        const optFormulaBlock = hasFormula(textVal)
+          ? `<div class="formula-preview option-formula" id="option_formula_${q.question_id}_${i}" style="display:block;margin-top:4px;">${escapeHtml(toLatexMath(textVal))}</div>`
           : '';
         let imgHtml = '';
         if (hasImageOptions) {
@@ -366,6 +368,14 @@ function renderQuestion() {
   renderAnswerPreview(q.question_id, corr.answer !== undefined ? corr.answer : (q.answer || ''));
   renderSolutionPreview(q.question_id, corr.solution !== undefined ? corr.solution : (q.solution || ''));
   renderScore();
+
+  // 渲染选项公式
+  if (q.options && q.options.length) {
+    q.options.forEach((opt, i) => {
+      const textVal = opt.text !== undefined ? opt.text : opt;
+      renderKatex(document.getElementById('option_formula_' + q.question_id + '_' + i), textVal);
+    });
+  }
   } catch (e) {
     console.error('renderQuestion error:', e);
   }
@@ -381,79 +391,138 @@ function onContentChange(qid, value) {
 }
 function onAnswerChange(qid, value) { ensureCorrection(qid); review.corrections[qid].answer = value; renderAnswerPreview(qid, value); renderScore(); }
 
-function formulaToHtml(text) {
-  if (!text) return null;
-  const hasFormula = text.includes('^') || text.includes('~') || text.includes('sqrt(');
-  if (!hasFormula) return null;
-  let html = escapeHtml(text)
-    .replace(/\^([^^\\n]+)\^/g, '<sup>$1</sup>')
-    .replace(/~([^~\\n]+)~/g, '<sub>$1</sub>');
-  html = renderSqrt(html);
-  return html;
+function hasFormula(text) {
+  return text && (text.includes('^') || text.includes('~') || text.includes('sqrt(') || text.includes(')/('));
 }
 
-function renderSqrt(text) {
-  let result = '';
-  let i = 0;
-  while (i < text.length) {
-    const idx = text.indexOf('sqrt(', i);
-    if (idx === -1) {
-      result += text.slice(i);
-      break;
+function toLatexMath(text) {
+  if (!text) return text;
+  const placeholders = [];
+  const addPlaceholder = (latex) => {
+    const key = `__MATH_${placeholders.length}__`;
+    placeholders.push(latex);
+    return key;
+  };
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+
+    // 分数 (a)/(b)，从内到外处理
+    let fi = 0;
+    while (fi < text.length) {
+      const divIdx = text.indexOf(')/(', fi);
+      if (divIdx === -1) break;
+      let depth = 0;
+      let start = divIdx;
+      while (start >= 0) {
+        if (text[start] === ')') depth++;
+        else if (text[start] === '(') {
+          depth--;
+          if (depth === 0) break;
+        }
+        start--;
+      }
+      if (start < 0) { fi = divIdx + 3; continue; }
+      depth = 0;
+      let end = divIdx + 2;
+      while (end < text.length) {
+        if (text[end] === '(') depth++;
+        else if (text[end] === ')') {
+          depth--;
+          if (depth === 0) break;
+        }
+        end++;
+      }
+      if (end >= text.length) { fi = divIdx + 3; continue; }
+      const num = text.slice(start + 1, divIdx);
+      const den = text.slice(divIdx + 3, end);
+      if (!num.includes(')/(') && !den.includes(')/(')) {
+        text = text.slice(0, start) + addPlaceholder(`\\frac{${num}}{${den}}`) + text.slice(end + 1);
+        changed = true;
+        fi = start + 1;
+      } else {
+        fi = end + 1;
+      }
     }
-    result += text.slice(i, idx);
-    let depth = 1;
-    let j = idx + 5;
-    while (j < text.length && depth > 0) {
-      if (text[j] === '(') depth++;
-      else if (text[j] === ')') depth--;
-      j++;
+
+    // sqrt(x)，内层优先
+    let si = 0;
+    while (si < text.length) {
+      const idx = text.indexOf('sqrt(', si);
+      if (idx === -1) break;
+      let depth = 1;
+      let j = idx + 5;
+      while (j < text.length && depth > 0) {
+        if (text[j] === '(') depth++;
+        else if (text[j] === ')') depth--;
+        j++;
+      }
+      const inner = text.slice(idx + 5, j - 1);
+      if (!inner.includes('sqrt(')) {
+        text = text.slice(0, idx) + addPlaceholder(`\\sqrt{${inner}}`) + text.slice(j);
+        changed = true;
+        si = idx + 1;
+      } else {
+        si = j;
+      }
     }
-    const inner = text.slice(idx + 5, j - 1);
-    result += `<span class="math-sqrt"><span class="sqrt-symbol">&radic;</span><span class="sqrt-over">${renderSqrt(inner)}</span></span>`;
-    i = j;
+
+    // 上标 ^x^，内层优先
+    text = text.replace(/([a-zA-Z0-9)\]}′']|\([^()]*\))\^([^^\n]+)\^/g, (m, base, exp) => {
+      changed = true;
+      return addPlaceholder(`${base}^{${exp}}`);
+    });
+
+    // 下标 ~x~，内层优先
+    text = text.replace(/([a-zA-Z0-9)\]}′']|\([^()]*\))\~([^~\n]+)\~/g, (m, base, sub) => {
+      changed = true;
+      return addPlaceholder(`${base}_{${sub}}`);
+    });
   }
-  return result;
+
+  placeholders.forEach((latex, idx) => {
+    text = text.split(`__MATH_${idx}__`).join(`$${latex}$`);
+  });
+  return text;
+}
+
+function renderKatex(el, text) {
+  if (!el) return;
+  if (!hasFormula(text)) {
+    el.innerHTML = '';
+    el.style.display = 'none';
+    return;
+  }
+  const latex = toLatexMath(text);
+  el.innerHTML = escapeHtml(latex);
+  el.style.display = 'block';
+  if (typeof renderMathInElement === 'function') {
+    try {
+      renderMathInElement(el, {
+        delimiters: [
+          {left: '$$', right: '$$', display: true},
+          {left: '$', right: '$', display: false},
+        ],
+        throwOnError: false,
+      });
+    } catch (e) {
+      console.error('KaTeX render error:', e);
+    }
+  }
 }
 
 function renderFormulaPreview(qid, text) {
-  const el = document.getElementById('formula_preview_' + qid);
-  if (!el) return;
-  const html = formulaToHtml(text);
-  if (html) {
-    el.innerHTML = html;
-    el.style.display = 'block';
-  } else {
-    el.innerHTML = '';
-    el.style.display = 'none';
-  }
+  renderKatex(document.getElementById('formula_preview_' + qid), text);
 }
 
 function renderAnswerPreview(qid, text) {
-  const el = document.getElementById('answer_preview_' + qid);
-  if (!el) return;
-  const html = formulaToHtml(text);
-  if (html) {
-    el.innerHTML = html;
-    el.style.display = 'block';
-  } else {
-    el.innerHTML = '';
-    el.style.display = 'none';
-  }
+  renderKatex(document.getElementById('answer_preview_' + qid), text);
 }
 function onSolutionChange(qid, value) { ensureCorrection(qid); review.corrections[qid].solution = value; renderSolutionPreview(qid, value); renderScore(); }
 
 function renderSolutionPreview(qid, text) {
-  const el = document.getElementById('solution_preview_' + qid);
-  if (!el) return;
-  const html = formulaToHtml(text);
-  if (html) {
-    el.innerHTML = html;
-    el.style.display = 'block';
-  } else {
-    el.innerHTML = '';
-    el.style.display = 'none';
-  }
+  renderKatex(document.getElementById('solution_preview_' + qid), text);
 }
 function onImagesChange(qid, value) { ensureCorrection(qid); review.corrections[qid].images = value.split(',').map(s => s.trim()).filter(Boolean); renderScore(); }
 function onTagsChange(qid, value) { ensureCorrection(qid); review.corrections[qid].tags = value.split(',').map(s => s.trim()).filter(Boolean); renderScore(); }
